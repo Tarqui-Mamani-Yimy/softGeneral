@@ -17,3 +17,5 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
     # Never "*": the API will send credentials (JWT) from the browser.
     cors_origins: list[str] = ["http://localhost:5173"]
+    storage_dir: str = "../datos"
+    max_upload_mb: int = 500

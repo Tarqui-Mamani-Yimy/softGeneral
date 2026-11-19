@@ -5,6 +5,7 @@ from app.core.config import Settings
 from app.core.database import build_engine, build_session_factory
 from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
+from app.modules.videos.router import router as videos_router
 
 API_PREFIX = "/api/v1"
 
@@ -31,4 +32,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router, prefix=API_PREFIX)
     app.include_router(auth_router, prefix=API_PREFIX)
+    app.include_router(videos_router, prefix=API_PREFIX)
     return app

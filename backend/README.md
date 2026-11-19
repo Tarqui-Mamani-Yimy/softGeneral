@@ -27,8 +27,10 @@ python3 -m venv .venv
 
 Settings come from environment variables or the repository-root `.env`:
 `DATABASE_URL`, `APP_ENV`, `CORS_ORIGINS` (JSON list, default `["http://localhost:5173"]`),
-`JWT_SECRET` (mandatory to start the API and at least 32 characters), and
-`JWT_EXPIRE_MINUTES` (default 60).
+`JWT_SECRET` (mandatory to start the API and at least 32 characters),
+`JWT_EXPIRE_MINUTES` (default 60),
+`STORAGE_DIR` (video upload path, default `../datos`), and
+`MAX_UPLOAD_MB` (maximum video upload size in MB, default 500).
 
 ## Run
 
@@ -40,6 +42,9 @@ Settings come from environment variables or the repository-root `.env`:
 
 - `GET /api/v1/health` → `{"status": "ok"}`
 - `GET /api/v1/health/db` → `{"database": "ok"}` or `503 {"database": "unavailable"}`
+- `POST /api/v1/videos` (permission `videos.upload`) → upload `.mp4`/`.avi`/`.mov`/`.mkv` video
+- `GET /api/v1/videos` (permission `videos.read`) → list video jobs (newest first, limit/offset)
+- `GET /api/v1/videos/{id}` (permission `videos.read`) → get video job status and progress
 - API docs: http://localhost:8000/docs
 
 ## Tests
