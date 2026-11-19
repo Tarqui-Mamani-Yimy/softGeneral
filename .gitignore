@@ -1,6 +1,7 @@
-# Trained models (distributed outside Git)
-modelos/
+# Model weights: only the four trained models in modelos/ are versioned.
+# Other .pt files (e.g. weights downloaded by Ultralytics) stay out of Git.
 *.pt
+!modelos/*.pt
 *.onnx
 *.engine
 

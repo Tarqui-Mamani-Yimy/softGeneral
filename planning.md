@@ -118,7 +118,7 @@ softGeneral/
 │   └── Dockerfile
 ├── frontend/
 │   └── src/            # paginas/privado, paginas/publico, componentes/, servicios/, hooks/
-├── modelos/            # futbol.pt, armas.pt, fuegoHumo.pt, peleas.pt (no subir a Git)
+├── modelos/            # futbol.pt, armas.pt, fuegoHumo.pt, peleas.pt (versionados en Git)
 ├── config/             # camaras.yaml, zonas.json, reglas.yaml
 ├── datos/              # videos_prueba/, salidas/, alertas/, eventos.db (no subir a Git)
 ├── entrenamiento/      # notebooks/, resultados/
@@ -179,7 +179,7 @@ Lo que **debe** funcionar en la demo. Todo lo demás es complementario y solo se
 - [x] Comprobar las clases de cada modelo (`model.names`)
 - [ ] Registrar las métricas finales de armas, fuego/humo y peleas
 - [ ] Probar inferencia real de los cuatro modelos con `ultralytics`
-- [ ] Definir cómo se distribuyen los `.pt` fuera de Git (por ejemplo, GitHub Releases)
+- [x] Distribuir los `.pt`: se versionan directamente en el repositorio (`modelos/`)
 
 ### Fase 1. Pipeline con video cargado (Modo A)
 - [ ] Interfaz `VideoSource` y `FileSource`
@@ -257,7 +257,7 @@ Lo que **debe** funcionar en la demo. Todo lo demás es complementario y solo se
 | Poca potencia de cómputo | Modelos pequeños, ONNX/TensorRT, análisis cada N fotogramas |
 | Tiempo limitado | Priorizar: pipeline, intrusos, alertas, web básica; dejar opcionales para el final |
 | Cuota de GPU de Kaggle | Entrenamientos en segundo plano; Colab o GPU rentada como respaldo |
-| Poco espacio en disco | Conservar solo los cuatro `.pt`; videos y salidas fuera de Git |
+| Poco espacio en disco | Conservar solo los cuatro `.pt` (versionados en `modelos/`); videos y salidas fuera de Git |
 | Licencias | Ultralytics es AGPL-3.0 (licencia empresarial para uso comercial cerrado); los modelos preentrenados de InsightFace son de uso no comercial; revisar la licencia de cada dataset |
 
 ---
