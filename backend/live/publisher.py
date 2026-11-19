@@ -31,7 +31,16 @@ class RTSPPublisher:
         if self.process is not None and self.process.poll() is None:
             return True
         width, height = self.frame_size
-        command = [self.binary, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(self.fps), "-i", "-", "-an", "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-profile:v", "baseline", "-bf", "0", "-g", str(max(1, round(self.fps * 2))), "-pix_fmt", "yuv420p", "-rtsp_transport", "tcp", "-f", "rtsp", self.url]
+        # VP8: every WebRTC browser must support it, while H.264 playback depends on
+        # the browser (Firefox on Linux often offers VP8 only). Keyframe every 2 s
+        # so viewers joining late get a picture quickly.
+        command = [
+            self.binary, "-y", "-loglevel", "error",
+            "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(self.fps), "-i", "-",
+            "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "1M",
+            "-g", str(max(1, round(self.fps * 2))), "-pix_fmt", "yuv420p",
+            "-rtsp_transport", "tcp", "-f", "rtsp", self.url,
+        ]
         try:
             self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=False, text=False)
             self.retry_backoff = self.retry_initial

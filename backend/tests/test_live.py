@@ -233,9 +233,10 @@ def test_publisher_and_evidence_use_the_first_real_frame_size(tmp_path):
     assert summary.frames_read == 3
 
 
-def test_publisher_encodes_h264_constrained_baseline_for_webrtc_browsers(monkeypatch):
-    """Firefox only plays H.264 Constrained Baseline over WebRTC; libx264's default
-    High profile makes MediaMTX close the viewer with "codecs not supported by client"."""
+def test_publisher_encodes_vp8_so_every_webrtc_browser_can_play_it(monkeypatch):
+    """VP8 is mandatory in WebRTC for every browser. H.264 depends on the browser
+    (Firefox on Linux needs the OpenH264 plugin and often offers only VP8, which made
+    MediaMTX close the viewer with "codecs not supported by client")."""
     import subprocess
 
     from live.publisher import RTSPPublisher
@@ -250,7 +251,7 @@ def test_publisher_encodes_h264_constrained_baseline_for_webrtc_browsers(monkeyp
     RTSPPublisher("rtsp://127.0.0.1:8554", "cam", 10.0, (8, 6))._start()
 
     command = captured["command"]
-    assert command[command.index("-profile:v") + 1] == "baseline"
-    assert command[command.index("-bf") + 1] == "0"
+    assert command[command.index("-c:v") + 1] == "libvpx"
+    assert command[command.index("-deadline") + 1] == "realtime"
     # keyframe every 2 s so a viewer that joins late sees the picture quickly
     assert command[command.index("-g") + 1] == "20"
