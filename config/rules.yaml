@@ -1,0 +1,15 @@
+# Thresholds and temporal confirmation defaults for the pure rules engine.
+intrusion:
+  min_frames: 3
+  unknown_origin_alerts: false
+fire_smoke:
+  k: 6
+  n: 10
+  confidence: 0.5
+  ignore_zones: [stands]
+weapon:
+  k: 3
+  n: 5
+  confidence: 0.6
+cooldown_seconds: 30
+forget_after_seconds: 30
