@@ -18,7 +18,7 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 |---|---|---|---|---|
 | T1 | S1-S4 | delegated: opencode via Herdr; correction batch partly done by opencode (items 2-6) before its quota ran out, items 1 and 7 plus L6-L7 finished inline by the parent | done | 104 passed / 9 skipped; seam: 343 annotated frames in 35 s (9.8 FPS) with 1 publisher session, analysis ~2.8 FPS on CPU, live alert over WebSocket ~200 ms frame-to-alert, clean shutdown |
 | T2 | S5-S7 | delegated: agy via Herdr (parallel unit: MediaMTX + simulated camera + cameras API + page) | done | 1938e3e; MediaMTX 1.21.4 (86 MB), sim camera publishes H.264, camera registered via API (201) |
-| T3 | all | inline: seam check (sim camera → live worker → alert over WebSocket + annotated stream) + cross verification (Risk items 2 and 4) | in progress | seam passed; agy verifies T1, a Sonnet subagent verifies T2 (opencode out of quota) |
+| T3 | all | inline: seam check (sim camera → live worker → alert over WebSocket + annotated stream) + cross verification (Risk items 2 and 4) | done | seam passed; agy verified T1 threads/processes: NO FAIL, NO BLOCKERS; Sonnet verified T2: 1 blocker + 1 credential leak fixed in 408683d (L9); 109 passed / 10 skipped, integration 9 passed |
 
 ## Log
 
