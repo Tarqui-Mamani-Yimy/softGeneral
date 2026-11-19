@@ -39,10 +39,17 @@ async def run_alerts_listener(app: FastAPI, stop_event: asyncio.Event) -> None:
         try:
             conn = await psycopg.AsyncConnection.connect(conn_str, autocommit=True)
             await conn.execute("LISTEN alerts")
+            await conn.execute("LISTEN camera_metrics")
             backoff = 1.0
             async for notify in conn.notifies():
                 if stop_event.is_set():
                     break
+                if notify.channel == "camera_metrics":
+                    try:
+                        await app.state.alert_broadcaster.broadcast_camera_metrics(notify.payload)
+                    except Exception as exc:
+                        logger.debug("Failed to broadcast camera metrics: %s", exc)
+                    continue
                 try:
                     payload = json.loads(notify.payload)
                     alert_id = UUID(str(payload.get("id")))

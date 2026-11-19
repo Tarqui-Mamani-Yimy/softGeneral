@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 import time
 from datetime import UTC, datetime
@@ -9,7 +10,9 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from app.modules.demo.repository import DEMO_CODE_PREFIX
 from live.repository import LiveAlertRepository
+from live.stats import DbStatsPublisher
 from vision.annotation.draw import draw_detections
 from vision.evidence.recorder import EvidenceRecorder
 from vision.rules.config import RuleConfig, load_rules_config
@@ -46,7 +49,7 @@ class _LatestAnalyzer:
     def submit(self, frame, timestamp_s, capture_timestamp):
         with self.condition:
             self.submitted += 1
-            if self.submitted % self.stride == 1:
+            if (self.submitted - 1) % self.stride == 0:
                 self.latest = (frame.copy(), timestamp_s, capture_timestamp)
                 self.condition.notify()
 
@@ -84,7 +87,7 @@ class _LatestAnalyzer:
 
 
 class LiveCameraRunner:
-    def __init__(self, camera, settings, session_factory, alert_repository=None, source_factory=None, publisher_factory=None, analyzer_factory=None, rules_factory=None, evidence_factory=None):
+    def __init__(self, camera, settings, session_factory, alert_repository=None, source_factory=None, publisher_factory=None, analyzer_factory=None, rules_factory=None, evidence_factory=None, stats_publisher=None):
         self.camera = camera
         self.settings = settings
         self.session_factory = session_factory
@@ -94,7 +97,9 @@ class LiveCameraRunner:
         self.analyzer_factory = analyzer_factory
         self.rules_factory = rules_factory or self._rules
         self.evidence_factory = evidence_factory or EvidenceRecorder
+        self.stats_publisher = stats_publisher or DbStatsPublisher(session_factory)
         self.last_frame_to_alert_ms = 0.0
+        self.last_alert_latency_ms = None
 
     def run(self, stop_event=None):
         summary = LiveSummary()
@@ -120,6 +125,10 @@ class LiveCameraRunner:
                 metrics_started = perf_counter()
                 last_metrics = metrics_started
                 next_publish = perf_counter()
+                stats_interval = getattr(self.settings, "live_stats_seconds", 2.0)
+                stats_window = (metrics_started, 0, 0)
+                stats_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-stats")
+                stats_pending = None
                 try:
                     while not stop_event or not stop_event.is_set():
                         if pending_frame is not None:
@@ -155,7 +164,13 @@ class LiveCameraRunner:
                             elapsed = now - metrics_started
                             logger.info("camera=%s analysis_fps=%.2f published_fps=%.2f dropped_frames=%d last_frame_to_alert_ms=%.1f", self.camera.code, summary.frames_analyzed / max(elapsed, 0.001), published_frames / max(elapsed, 0.001), getattr(source, "dropped_frames", 0), self.last_frame_to_alert_ms)
                             last_metrics = now
+                        if now - stats_window[0] >= stats_interval and (stats_pending is None or stats_pending.done()):
+                            window = max(now - stats_window[0], 0.001)
+                            payload = self._stats_payload(source, last_detections, (summary.frames_analyzed - stats_window[1]) / window, (published_frames - stats_window[2]) / window)
+                            stats_window = (now, summary.frames_analyzed, published_frames)
+                            stats_pending = stats_executor.submit(self._publish_stats, payload)
                 finally:
+                    stats_executor.shutdown(wait=True)
                     analysis.close()
                     last_detections, events = analysis.drain()
                     for event, event_frame, event_capture_timestamp in events:
@@ -163,6 +178,27 @@ class LiveCameraRunner:
                     evidence.flush()
         summary.analysis_fps = summary.frames_analyzed / max(perf_counter() - started, 0.001)
         return summary
+
+    def _stats_payload(self, source, detections, analysis_fps, published_fps):
+        labels = {}
+        for detection in detections:
+            labels[detection.label] = labels.get(detection.label, 0) + 1
+        return {
+            "camera_id": str(self.camera.id),
+            "analysis_fps": round(analysis_fps, 2),
+            "published_fps": round(published_fps, 2),
+            "dropped_frames": int(getattr(source, "dropped_frames", 0)),
+            "frame_to_alert_ms": None if self.last_alert_latency_ms is None else round(self.last_alert_latency_ms, 1),
+            "people_tracked": labels.get("person", 0),
+            "detections": labels,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+
+    def _publish_stats(self, payload):
+        try:
+            self.stats_publisher.publish(payload)
+        except Exception:
+            logger.warning("Publishing live stats failed for camera %s", self.camera.code, exc_info=True)
 
     def _wait_first_frame(self, source, stop_event):
         waited_since = perf_counter()
@@ -181,6 +217,7 @@ class LiveCameraRunner:
 
     def _store_alert(self, event, frame, evidence, capture_timestamp):
         self.last_frame_to_alert_ms = max(0.0, time.time() - capture_timestamp) * 1000
+        self.last_alert_latency_ms = self.last_frame_to_alert_ms
         alert_id = uuid4()
         snapshot, clip = evidence.start_alert(event, alert_id, frame)
         prefix = f"alerts/live/{self.camera.code}"
@@ -195,7 +232,8 @@ class LiveCameraRunner:
 
     def _rules(self):
         rules = Path(self.settings.worker_rules_file)
-        zones = Path(self.settings.worker_zones_file)
+        is_demo = self.camera.code.startswith(DEMO_CODE_PREFIX)
+        zones = Path(getattr(self.settings, "demo_zones_file", "../config/zones/demo.json") if is_demo else self.settings.worker_zones_file)
         if rules.exists() and zones.exists():
             loaded = load_rules_config(rules, zones)
             return RulesEngine(loaded.zones, loaded.rules)

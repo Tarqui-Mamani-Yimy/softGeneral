@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import math
 from typing import Any, Callable
 from uuid import UUID
 
@@ -33,10 +35,51 @@ def record_to_public_dict(record: AlertRecord) -> dict[str, Any]:
     return response.model_dump(mode="json")
 
 
+CAMERA_METRICS_PERMISSION = "cameras.read"
+_NUMBER_FIELDS = ("analysis_fps", "published_fps", "dropped_frames", "people_tracked")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def parse_camera_metrics(raw: str | bytes | dict) -> dict[str, Any] | None:
+    """Validate a camera_metrics payload; return the WebSocket message or None when malformed.
+
+    Only whitelisted fields are copied, so nothing else a publisher sends (paths, URLs)
+    can reach a browser.
+    """
+    try:
+        payload = json.loads(raw) if not isinstance(raw, dict) else raw
+        if not isinstance(payload, dict):
+            return None
+        camera_id = str(UUID(str(payload["camera_id"])))
+        metrics: dict[str, Any] = {}
+        for field in _NUMBER_FIELDS:
+            if not _is_number(payload[field]):
+                return None
+            metrics[field] = payload[field]
+        latency = payload["frame_to_alert_ms"]
+        if latency is not None and not _is_number(latency):
+            return None
+        metrics["frame_to_alert_ms"] = latency
+        detections = payload["detections"]
+        if not isinstance(detections, dict) or not all(isinstance(k, str) and _is_number(v) for k, v in detections.items()):
+            return None
+        metrics["detections"] = detections
+        if not isinstance(payload["updated_at"], str):
+            return None
+        metrics["updated_at"] = payload["updated_at"]
+    except Exception:
+        return None
+    return {"type": "camera_metrics", "camera_id": camera_id, "metrics": metrics}
+
+
 class BroadcasterClient:
-    def __init__(self, websocket: Any, user_id: UUID, queue_size: int = 50):
+    def __init__(self, websocket: Any, user_id: UUID, queue_size: int = 50, permissions: Any = ()):
         self.websocket = websocket
         self.user_id = user_id
+        self.permissions = frozenset(permissions)
         self.queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=queue_size)
         self.dropped = False
         self._closed = False
@@ -120,8 +163,8 @@ class AlertBroadcaster:
     def remove_client(self, client: BroadcasterClient) -> None:
         self.clients.discard(client)
 
-    def connect(self, websocket: WebSocket, user_id: UUID, queue_size: int = 50) -> BroadcasterClient:
-        client = BroadcasterClient(websocket, user_id, queue_size=queue_size)
+    def connect(self, websocket: WebSocket, user_id: UUID, queue_size: int = 50, permissions: Any = ()) -> BroadcasterClient:
+        client = BroadcasterClient(websocket, user_id, queue_size=queue_size, permissions=permissions)
         self.add_client(client)
         return client
 
@@ -162,10 +205,12 @@ class AlertBroadcaster:
         client.close_code = code
         client.enqueue(None)
 
-    async def broadcast(self, payload: dict) -> None:
+    async def broadcast(self, payload: dict, permission: str | None = None) -> None:
         await self.check_active_users()
 
         for client in list(self.clients):
+            if permission is not None and permission not in client.permissions:
+                continue
             ok = client.enqueue(payload)
             if not ok:
                 self.drop_client(client, code=1008)
@@ -173,3 +218,10 @@ class AlertBroadcaster:
     async def broadcast_alert_record(self, record: AlertRecord) -> None:
         public_dict = record_to_public_dict(record)
         await self.broadcast({"type": "alert", "alert": public_dict})
+
+    async def broadcast_camera_metrics(self, raw: str | bytes | dict) -> bool:
+        message = parse_camera_metrics(raw)
+        if message is None:
+            return False
+        await self.broadcast(message, permission=CAMERA_METRICS_PERMISSION)
+        return True

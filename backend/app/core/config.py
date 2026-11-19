@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     worker_models: str = "person,armas,fuegoHumo"
     worker_rules_file: str = "../config/rules.yaml"
     worker_zones_file: str = "../config/zones/example.json"
+    demo_zones_file: str = "../config/zones/demo.json"
     worker_clip_before_seconds: float = 3.0
     worker_clip_after_seconds: float = 3.0
     ffmpeg_binary: str = "ffmpeg"
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     mediamtx_publish_url: str = "rtsp://127.0.0.1:8554"
     live_analysis_stride: int = 3
     live_metrics_seconds: float = 10.0
+    # How often the live runner publishes camera_metrics notifications.
+    live_stats_seconds: float = 2.0
     # Browser demo: where the worker reads the published stream and where the
     # browser publishes it (WHIP over WebRTC).
     mediamtx_rtsp_read_url: str = "rtsp://127.0.0.1:8554"

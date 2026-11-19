@@ -195,7 +195,7 @@ async def alerts_websocket_endpoint(
             pass
         return
 
-    client = broadcaster.connect(websocket, auth_data.user.id)
+    client = broadcaster.connect(websocket, auth_data.user.id, permissions=auth_data.permissions)
     sender_task = asyncio.create_task(client.run_sender())
 
     try:
