@@ -16,9 +16,12 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 | ID | Specs | Route | Status | Evidence |
 |---|---|---|---|---|
 | T1 | S1-S6 | delegated: opencode via Herdr (user asked to work with helpers) | done | unit 9 passed / 1 skipped; integration 1 passed (rerun by parent); DB left with 0 users, 0 audit rows |
+| T3 | S4-S5 | delegated: opencode via Herdr — apply L2 follow-ups (1)-(3) | done | 16 passed / 1 skipped, integration 1 passed (rerun by parent); agy recheck PASS on items 1-3, no blockers |
 | T2 | S1-S6 | independent verifier: agy via Herdr (Risk item 2) | done | PASS on every S#, no blockers; live probes (alg none, bad signature, expired, non-UUID sub, unknown user) all 401 |
 
 ## Log
 
 - L1 (2026-11-18, user, verbatim): "ok" — accepting "¿Le asigno el módulo de autenticación?" with the scope "login con JWT, permisos leídos de la vista `user_permissions` y un comando para crear el primer admin".
 - L2: Verifier non-blocking follow-ups (not applied): (1) missing JWT_SECRET makes login return 500 instead of failing at startup (`backend/app/modules/auth/router.py:36`); (2) `jwt.decode` could also pass `options={"require": ["exp", "sub"]}` (`backend/app/modules/auth/dependencies.py:42`); (3) no automated test for `create_admin`.
+- L3 (2026-11-18, user, verbatim): "si" — accepting "¿Le pido a opencode esas 3 mejoras antes de seguir?" (L2 items 1-3).
+- L4: T3 recheck by agy: missing or short JWT_SECRET aborts startup; tokens missing exp, iat or sub get 401; create_admin tests go through main(). DB left with 0 users and 0 audit rows.

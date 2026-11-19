@@ -100,6 +100,16 @@ def test_me_requires_valid_nonexpired_token():
     assert client.get(f"{API_PREFIX}/auth/me", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
 
 
+def test_me_rejects_token_without_exp_claim():
+    client, repository = make_client()
+    token = jwt.encode({"sub": str(repository.user_id), "iat": datetime.now(UTC)}, SECRET, algorithm="HS256")
+
+    response = client.get(f"{API_PREFIX}/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid credentials"}
+
+
 def test_me_returns_current_user_and_permissions_and_deactivation_takes_effect():
     client, repository = make_client()
     login = client.post(f"{API_PREFIX}/auth/login", json={"username": "guard", "password": repository.password})

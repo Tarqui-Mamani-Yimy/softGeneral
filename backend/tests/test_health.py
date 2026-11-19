@@ -6,10 +6,11 @@ from app.modules.health.router import database_check
 
 # Port 1 is never a PostgreSQL server, so the connection is refused fast.
 UNREACHABLE_DB = "postgresql+psycopg://user:pass@127.0.0.1:1/none"
+TEST_JWT_SECRET = "health-test-secret-with-at-least-32-bytes"
 
 
 def make_client(**overrides) -> TestClient:
-    settings = Settings(database_url=UNREACHABLE_DB, **overrides)
+    settings = Settings(database_url=UNREACHABLE_DB, jwt_secret=TEST_JWT_SECRET, **overrides)
     return TestClient(create_app(settings))
 
 
@@ -46,3 +47,21 @@ def test_cors_allows_only_configured_origins():
 
     assert allowed.headers.get("access-control-allow-origin") == "http://localhost:5173"
     assert "access-control-allow-origin" not in denied.headers
+
+
+def test_create_app_rejects_missing_jwt_secret():
+    try:
+        create_app(Settings(database_url=UNREACHABLE_DB, jwt_secret=None))
+    except ValueError as error:
+        assert str(error) == "JWT_SECRET is required"
+    else:
+        raise AssertionError("create_app accepted a missing JWT_SECRET")
+
+
+def test_create_app_rejects_short_jwt_secret():
+    try:
+        create_app(Settings(database_url=UNREACHABLE_DB, jwt_secret="too-short"))
+    except ValueError as error:
+        assert str(error) == "JWT_SECRET must be at least 32 characters"
+    else:
+        raise AssertionError("create_app accepted a short JWT_SECRET")

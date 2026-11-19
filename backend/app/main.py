@@ -11,6 +11,10 @@ API_PREFIX = "/api/v1"
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    if not settings.jwt_secret:
+        raise ValueError("JWT_SECRET is required")
+    if len(settings.jwt_secret) < 32:
+        raise ValueError("JWT_SECRET must be at least 32 characters")
     app = FastAPI(title=settings.app_name)
 
     app.state.settings = settings

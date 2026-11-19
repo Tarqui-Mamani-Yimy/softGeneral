@@ -39,7 +39,12 @@ def get_current_user(
     if not secret or credentials is None:
         raise invalid_credentials()
     try:
-        claims = jwt.decode(credentials.credentials, secret, algorithms=["HS256"])
+        claims = jwt.decode(
+            credentials.credentials,
+            secret,
+            algorithms=["HS256"],
+            options={"require": ["exp", "sub", "iat"]},
+        )
         user_id = UUID(str(claims["sub"]))
     except (jwt.PyJWTError, KeyError, TypeError, ValueError):
         raise invalid_credentials() from None

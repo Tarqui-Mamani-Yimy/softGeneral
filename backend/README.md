@@ -27,7 +27,8 @@ python3 -m venv .venv
 
 Settings come from environment variables or the repository-root `.env`:
 `DATABASE_URL`, `APP_ENV`, `CORS_ORIGINS` (JSON list, default `["http://localhost:5173"]`),
-`JWT_SECRET` (required for authentication), and `JWT_EXPIRE_MINUTES` (default 60).
+`JWT_SECRET` (mandatory to start the API and at least 32 characters), and
+`JWT_EXPIRE_MINUTES` (default 60).
 
 ## Run
 
