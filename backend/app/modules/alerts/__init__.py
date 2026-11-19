@@ -1,1 +1,1 @@
-"""Alerts: listing and review (confirm / false alarm)."""
+"""Alerts module: query alerts feed, view snapshots/clips, and review alerts."""

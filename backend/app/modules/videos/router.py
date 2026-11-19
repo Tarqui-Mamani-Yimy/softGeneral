@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.dependencies import UserResponseData, get_db_session, require_permission
 from app.modules.videos.dependencies import get_video_repository
+from app.modules.videos.paths import get_contained_file
 from app.modules.videos.repository import VideoRepository
 from app.modules.videos.schemas import VideoJobResponse
 
@@ -130,14 +131,5 @@ def get_video_output(
         raise HTTPException(status_code=404, detail="Video job not found")
     if job.status != "completed":
         raise HTTPException(status_code=409, detail="Video is not ready")
-    if not job.output_path:
-        raise HTTPException(status_code=404, detail="Video file not found")
-    storage_root = Path(request.app.state.settings.storage_dir).resolve()
-    output_path = Path(job.output_path).resolve()
-    try:
-        output_path.relative_to(storage_root)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Video file not found") from None
-    if not output_path.is_file():
-        raise HTTPException(status_code=404, detail="Video file not found")
+    output_path = get_contained_file(request.app.state.settings.storage_dir, job.output_path, missing_detail="Video file not found")
     return FileResponse(output_path, media_type="video/mp4")

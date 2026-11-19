@@ -49,6 +49,11 @@ and `WORKER_MODELS` (default `person,armas,fuegoHumo`).
 - `GET /api/v1/videos` (permission `videos.read`) → list video jobs (newest first, limit/offset)
 - `GET /api/v1/videos/{id}` (permission `videos.read`) → get video job status and progress
 - `GET /api/v1/videos/{id}/output` (permission `videos.read`) → download completed MP4
+- `GET /api/v1/alerts` (permission `alerts.read`) → list alerts (filters: status, alert_type, video_job_id)
+- `GET /api/v1/alerts/{id}` (permission `alerts.read`) → get alert details
+- `GET /api/v1/alerts/{id}/snapshot` (permission `alerts.read`) → download JPEG snapshot
+- `GET /api/v1/alerts/{id}/clip` (permission `alerts.read`) → download MP4 clip
+- `POST /api/v1/alerts/{id}/review` (permission `alerts.review`) → review alert (confirmed/false_alarm)
 - API docs: http://localhost:8000/docs
 
 The worker re-queues jobs left in `processing` at startup. The current deployment

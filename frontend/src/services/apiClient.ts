@@ -1,3 +1,4 @@
+import type { Alert, AlertReviewPayload } from '../types/alert';
 import type { LoginCredentials, LoginResponse, User } from '../types/auth';
 import type { VideoJob } from '../types/video';
 
@@ -231,6 +232,73 @@ export async function downloadVideoOutput(jobId: string, filename: string): Prom
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(blobUrl);
+}
+
+export async function listAlerts(params: {
+  status?: string;
+  alert_type?: string;
+  video_job_id?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<Alert[]> {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  if (params.alert_type) query.set('alert_type', params.alert_type);
+  if (params.video_job_id) query.set('video_job_id', params.video_job_id);
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+  if (params.offset !== undefined) query.set('offset', String(params.offset));
+
+  const qs = query.toString();
+  return apiClient<Alert[]>(`/alerts${qs ? `?${qs}` : ''}`);
+}
+
+export async function getAlert(id: string): Promise<Alert> {
+  return apiClient<Alert>(`/alerts/${id}`);
+}
+
+export async function fetchAlertSnapshotBlob(id: string): Promise<Blob> {
+  const url = `${API_URL}/alerts/${id}/snapshot`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    if (response.status === 401 && onUnauthorizedCallback) {
+      setAuthToken(null);
+      onUnauthorizedCallback();
+    }
+    throw new ApiError(response.status, response.statusText);
+  }
+  return response.blob();
+}
+
+export async function fetchAlertClipBlob(id: string): Promise<Blob> {
+  const url = `${API_URL}/alerts/${id}/clip`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    if (response.status === 401 && onUnauthorizedCallback) {
+      setAuthToken(null);
+      onUnauthorizedCallback();
+    }
+    throw new ApiError(response.status, response.statusText);
+  }
+  return response.blob();
+}
+
+export async function reviewAlert(id: string, payload: AlertReviewPayload): Promise<Alert> {
+  return apiClient<Alert>(`/alerts/${id}/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getHealth(): Promise<HealthResponse> {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import {
   listVideos,
@@ -326,8 +327,14 @@ export const VideosPage: React.FC = () => {
                     <td className="py-3 px-4 whitespace-nowrap text-slate-400">
                       {new Date(job.created_at).toLocaleString()}
                     </td>
-                    <td className="py-3 pl-4 whitespace-nowrap text-right">
-                      {job.status === 'completed' ? (
+                    <td className="py-3 pl-4 whitespace-nowrap text-right space-x-2">
+                      <Link
+                        to={`/alerts?video_job_id=${job.id}`}
+                        className="inline-flex items-center rounded bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white border border-slate-700 transition-colors"
+                      >
+                        View alerts
+                      </Link>
+                      {job.status === 'completed' && (
                         <button
                           type="button"
                           onClick={() => handleDownload(job)}
@@ -336,8 +343,6 @@ export const VideosPage: React.FC = () => {
                         >
                           {downloadingId === job.id ? 'Downloading...' : 'Download'}
                         </button>
-                      ) : (
-                        <span className="text-slate-600">—</span>
                       )}
                     </td>
                   </tr>
