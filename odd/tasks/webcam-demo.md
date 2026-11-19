@@ -15,7 +15,7 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 |---|---|---|---|---|
 | T1 | S2-S3 | delegated: Sonnet subagent (parallel unit: demo API + live watcher; opencode out of quota) | done | 128 passed; the subagent reported that the demo API tests were written after the router (simulated RED); supervisor tests were written first |
 | T2 | S1, S4 | delegated: agy via Herdr (parallel unit: demo page + WHIP client) | done | build + lint pass; readiness probe replaced by the parent (L4) |
-| T3 | all | inline: seam check (browser-like WHIP publisher → MediaMTX → watcher → WebSocket alert) + cross verification (Risk items 2 and 4) | in progress | real Chromium + fake webcam: login → Try demo → Live, annotated stream with boxes, 3 live intrusion alerts on the page, Stop disables the demo camera |
+| T3 | all | inline: seam check (browser-like WHIP publisher → MediaMTX → watcher → WebSocket alert) + cross verification (Risk items 2 and 4) | done | agy verified 7da93fd: 6/6 PASS, no blockers (131 passed, integration 11 passed); deployment risk on MediaMTX anonymous api recorded in L5; real Chromium + fake webcam: login → Try demo → Live, annotated stream with boxes, 3 live intrusion alerts on the page, Stop disables the demo camera |
 
 ## Log
 
