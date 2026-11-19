@@ -1,0 +1,5 @@
+# Install torch and torchvision from the CPU-only index before this file:
+# pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+ultralytics>=8.4,<9
+# OpenCV comes with ultralytics (opencv-python). Do not add opencv-python-headless:
+# both packages install the same cv2 module and overwrite each other.
