@@ -23,6 +23,63 @@ class VideoJobRecord:
 
 
 class VideoRepository:
+    def claim_next(self, session: Session) -> VideoJobRecord | None:
+        row = session.execute(
+            text("""SELECT id FROM video_jobs
+                   WHERE status = 'queued'
+                   ORDER BY created_at
+                   LIMIT 1 FOR UPDATE SKIP LOCKED""")
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        claimed = session.execute(
+            text("""UPDATE video_jobs
+                   SET status = 'processing', started_at = now(), progress = 0
+                   WHERE id = :id
+                   RETURNING id, uploaded_by, original_filename, input_path, output_path,
+                             status, progress, error_message, created_at, started_at, finished_at"""),
+            {"id": row},
+        ).mappings().one()
+        return self._record(claimed)
+
+    def requeue_processing(self, session: Session) -> None:
+        session.execute(
+            text("""UPDATE video_jobs
+                   SET status = 'queued', progress = 0, started_at = NULL
+                   WHERE status = 'processing'""")
+        )
+
+    def update_progress(self, session: Session, job_id: UUID, progress: int) -> None:
+        session.execute(
+            text("UPDATE video_jobs SET progress = :progress WHERE id = :id AND status = 'processing'"),
+            {"id": job_id, "progress": progress},
+        )
+
+    def complete(self, session: Session, job_id: UUID, output_path: str) -> None:
+        session.execute(
+            text("""UPDATE video_jobs
+                   SET status = 'completed', output_path = :output_path,
+                       progress = 100, finished_at = now()
+                   WHERE id = :id"""),
+            {"id": job_id, "output_path": output_path},
+        )
+
+    def fail(self, session: Session, job_id: UUID, error_message: str) -> None:
+        session.execute(
+            text("""UPDATE video_jobs
+                   SET status = 'failed', error_message = :error_message, finished_at = now()
+                   WHERE id = :id"""),
+            {"id": job_id, "error_message": error_message[:500]},
+        )
+
+    def requeue(self, session: Session, job_id: UUID) -> None:
+        session.execute(
+            text("""UPDATE video_jobs
+                   SET status = 'queued', progress = 0, started_at = NULL
+                   WHERE id = :id"""),
+            {"id": job_id},
+        )
+
     def create_job(
         self,
         session: Session,

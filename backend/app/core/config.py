@@ -19,3 +19,6 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     storage_dir: str = "../datos"
     max_upload_mb: int = 500
+    worker_poll_seconds: float = 2.0
+    worker_stride: int = 2
+    worker_models: str = "person,armas,fuegoHumo"
