@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.dependencies import UserResponseData, get_db_session, require_permission
 from app.modules.cameras.dependencies import get_camera_repository
 from app.modules.cameras.repository import CameraRecord, CameraRepository
-from app.modules.cameras.schemas import CameraCreateRequest, CameraResponse, CameraUpdateRequest
+from app.modules.cameras.schemas import CameraCreateRequest, CameraResponse, CameraUpdateRequest, validate_camera_source
 
 router = APIRouter(prefix="/cameras", tags=["cameras"])
 
@@ -86,12 +86,13 @@ def update_camera(
     if existing is None:
         raise HTTPException(status_code=404, detail="Camera not found")
 
-    # If updating source_url without updating source_type, validate against existing source_type
-    effective_source_type = payload.source_type or existing.source_type
-    if payload.source_url is not None:
-        from app.modules.cameras.schemas import validate_camera_source
+    # Validate the camera as it will be after the PATCH: changing only the type
+    # must still match the stored URL, and changing only the URL must match the type.
+    if payload.source_type is not None or payload.source_url is not None:
+        effective_source_type = payload.source_type or existing.source_type
+        effective_source_url = payload.source_url if payload.source_url is not None else existing.source_url
         try:
-            validate_camera_source(effective_source_type, payload.source_url)
+            validate_camera_source(effective_source_type, effective_source_url)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from None
 

@@ -318,3 +318,28 @@ def test_disable_camera_sets_inactive_and_audits(tmp_path: Path):
     assert res.status_code == 200
     assert res.json()["is_active"] is False
     assert cam_repo.audit_log[-1]["action"] == "camera.disabled"
+
+
+@pytest.mark.parametrize(
+    ("existing_type", "existing_url", "patch", "expected"),
+    [
+        ("file", "/videos/a.mp4", {"source_type": "rtsp"}, 422),
+        ("file", "/videos/a.mp4", {"source_type": "webcam"}, 422),
+        ("rtsp", "rtsp://127.0.0.1:8554/a", {"source_type": "webcam"}, 422),
+        ("file", "/videos/a.mp4", {"source_type": "rtsp", "source_url": "rtsp://127.0.0.1:8554/a"}, 200),
+        ("rtsp", "rtsp://127.0.0.1:8554/a", {"name": "Renamed"}, 200),
+    ],
+)
+def test_patch_validates_the_resulting_source_type_and_url(tmp_path: Path, existing_type, existing_url, patch, expected):
+    admin_repo = FakeUserRepository(permissions={"cameras.read", "cameras.manage"})
+    cam_repo = FakeCameraRepository()
+    cam = make_camera_record(source_type=existing_type, source_url=existing_url)
+    cam_repo.cameras[cam.id] = cam
+    client, user_repo, _ = make_client(tmp_path, user_repository=admin_repo, camera_repository=cam_repo)
+
+    response = client.patch(f"{API_PREFIX}/cameras/{cam.id}", headers=make_auth_headers(user_repo.user_id), json=patch)
+
+    assert response.status_code == expected
+    if expected == 422:
+        assert cam_repo.cameras[cam.id].source_type == existing_type
+        assert cam_repo.audit_log == []

@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit, urlunsplit
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -19,6 +20,17 @@ def validate_camera_source(source_type: str | None, source_url: str | None) -> N
     elif source_type == "webcam":
         if not re.match(r"^\d+$", source_url.strip()):
             raise ValueError("source_url must be digits representing device index for webcam cameras")
+
+
+def redact_url_credentials(url: str) -> str:
+    """Return the URL without user and password, for logs and the audit trail."""
+    parts = urlsplit(url)
+    if parts.username is None and parts.password is None:
+        return url
+    host = parts.hostname or ""
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, f"***@{host}", parts.path, parts.query, parts.fragment))
 
 
 class CameraCreateRequest(BaseModel):

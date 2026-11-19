@@ -6,6 +6,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.modules.cameras.schemas import redact_url_credentials
+
 
 @dataclass
 class CameraRecord:
@@ -116,7 +118,7 @@ class CameraRepository:
         if "source_url" in values and values["source_url"] is not None:
             updates.append("source_url = :source_url")
             params["source_url"] = values["source_url"]
-            audit_details["source_url"] = values["source_url"]
+            audit_details["source_url"] = redact_url_credentials(values["source_url"])
 
         if "is_active" in values and values["is_active"] is not None:
             updates.append("is_active = :is_active")

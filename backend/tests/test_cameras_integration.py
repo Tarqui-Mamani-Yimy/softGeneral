@@ -93,3 +93,48 @@ def test_create_camera_writes_db_and_audit_log(tmp_path: Path):
 
         finally:
             transaction.rollback()
+
+
+@pytest.mark.integration
+def test_camera_audit_log_never_stores_stream_credentials(tmp_path: Path):
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is not set")
+
+    engine = create_engine(database_url)
+    password = "admin-integration-password"
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            role_id = connection.execute(text("SELECT id FROM roles WHERE code = 'admin'")).scalar_one()
+            connection.execute(
+                text("""INSERT INTO users (username, email, full_name, password_hash, role_id)
+                        VALUES ('integration_cred_admin', 'cred_admin@example.com', 'Cred Admin', :hash, :role_id)"""),
+                {"hash": PasswordHash.recommended().hash(password), "role_id": role_id},
+            )
+            app = create_app(Settings(database_url=database_url, jwt_secret="integration-secret-with-at-least-32-bytes", storage_dir=str(tmp_path)))
+            connection.begin_nested()
+            app.state.session_factory = sessionmaker(bind=connection, autoflush=False, expire_on_commit=False)
+            client = TestClient(app)
+            token = client.post(f"{API_PREFIX}/auth/login", json={"username": "integration_cred_admin", "password": password}).json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            created = client.post(f"{API_PREFIX}/cameras", headers=headers, json={
+                "code": "cam_cred_01", "name": "Cred Camera", "source_type": "rtsp",
+                "source_url": "rtsp://viewer:first-secret@10.0.0.5:554/stream1",
+            })
+            assert created.status_code == 201
+            updated = client.patch(f"{API_PREFIX}/cameras/{created.json()['id']}", headers=headers, json={
+                "source_url": "rtsp://viewer:second-secret@10.0.0.6:554/stream1",
+            })
+            assert updated.status_code == 200
+
+            details = connection.execute(
+                text("SELECT details::text FROM audit_log WHERE entity_type = 'camera' AND entity_id = :id ORDER BY id"),
+                {"id": created.json()["id"]},
+            ).scalars().all()
+            assert len(details) == 2
+            assert not any("secret" in row or "viewer:" in row for row in details)
+            assert "10.0.0.6" in details[1]  # the change itself is still traceable
+        finally:
+            transaction.rollback()
