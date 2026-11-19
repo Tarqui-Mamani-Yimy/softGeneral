@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../hooks';
 
 interface NavItem {
   name: string;
@@ -14,6 +15,8 @@ const navItems: NavItem[] = [
 ];
 
 export const AppLayout: React.FC = () => {
+  const { user, logout } = useAuth();
+
   return (
     <div className="flex min-h-screen bg-slate-900 text-slate-100">
       {/* Sidebar navigation for security operations */}
@@ -43,18 +46,20 @@ export const AppLayout: React.FC = () => {
           </nav>
         </div>
 
-        {/* User / Guard session status */}
+        {/* User / Guard session status & Logout */}
         <div className="border-t border-slate-800 pt-4 px-2">
-          <div className="mb-2">
-            <p className="text-xs font-semibold text-slate-400">Active Operator</p>
-            <p className="text-sm text-slate-200">Security Guard (Session)</p>
+          <div className="mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Operator</p>
+            <p className="text-sm font-medium text-slate-200">{user?.full_name ?? 'Authenticated Operator'}</p>
+            <p className="text-xs font-mono capitalize text-emerald-400">{user?.role ?? 'guard'}</p>
           </div>
-          <NavLink
-            to="/login"
-            className="block text-center text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+          <button
+            type="button"
+            onClick={logout}
+            className="w-full rounded bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white transition-colors cursor-pointer text-center"
           >
-            Switch Account / Logout
-          </NavLink>
+            Log out
+          </button>
         </div>
       </aside>
 

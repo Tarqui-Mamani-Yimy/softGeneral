@@ -1,5 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppLayout } from './components/AppLayout';
 import { LoginPage } from './pages/private/LoginPage';
 import { DashboardPage } from './pages/private/DashboardPage';
@@ -11,25 +13,27 @@ import { SharedResultPage } from './pages/public/SharedResultPage';
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public auth / login */}
-        <Route path="/login" element={<LoginPage />} />
+      <AuthProvider>
+        <Routes>
+          {/* Public routes outside auth guard */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/share/:token" element={<SharedResultPage />} />
 
-        {/* Public sports metrics sharing */}
-        <Route path="/share/:token" element={<SharedResultPage />} />
+          {/* Protected private operations */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/cameras" element={<CamerasPage />} />
+              <Route path="/videos" element={<VideosPage />} />
+            </Route>
+          </Route>
 
-        {/* Private guards operations */}
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/cameras" element={<CamerasPage />} />
-          <Route path="/videos" element={<VideosPage />} />
-        </Route>
-
-        {/* Fallback route */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+          {/* Fallback route */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 };

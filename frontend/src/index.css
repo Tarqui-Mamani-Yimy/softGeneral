@@ -14,3 +14,29 @@
     color: #f8fafc;
   }
 }
+
+/* Accessible styled progress bar per modern-web-guidance */
+progress {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  border-radius: 9999px;
+  background-color: #1e293b;
+}
+
+progress::-webkit-progress-bar {
+  background-color: #1e293b;
+  border-radius: 9999px;
+}
+
+progress::-webkit-progress-value {
+  background-color: #10b981;
+  border-radius: 9999px;
+  transition: inline-size 0.3s ease;
+}
+
+progress::-moz-progress-bar {
+  background-color: #10b981;
+  border-radius: 9999px;
+  transition: inline-size 0.3s ease;
+}

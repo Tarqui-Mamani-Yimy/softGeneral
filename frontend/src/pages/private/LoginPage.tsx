@@ -1,7 +1,45 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks';
+import { ApiError } from '../../services/apiClient';
 
 export const LoginPage: React.FC = () => {
+  const { user, token, login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // If already logged in, redirect to dashboard
+  if (token && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      await login({ identifier, password });
+      const from = (location.state as { from?: { pathname?: string } })?.from?.pathname ?? '/dashboard';
+      navigate(from, { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.detail);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Invalid credentials');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
       <div className="w-full max-w-md space-y-6 rounded-lg border border-slate-800 bg-slate-900 p-8 shadow-xl">
@@ -10,44 +48,73 @@ export const LoginPage: React.FC = () => {
           <p className="text-sm text-slate-400">Stadium Computer Vision Assistant</p>
         </div>
 
-        <div className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
-            <label htmlFor="username" className="block text-xs font-medium text-slate-300">
-              Username or Badge ID
+            <label htmlFor="login-identifier" className="block text-xs font-medium text-slate-300">
+              Username or Email
             </label>
             <input
-              id="username"
+              id="login-identifier"
+              name="identifier"
               type="text"
-              disabled
-              placeholder="guard_operator_01"
-              className="mt-1 block w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 placeholder-slate-500 cursor-not-allowed"
+              required
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={isSubmitting}
+              value={identifier}
+              onChange={(e) => {
+                setIdentifier(e.target.value);
+                if (error) setError(null);
+              }}
+              placeholder="operator or guard@example.com"
+              aria-describedby={error ? 'login-error-msg' : undefined}
+              className="mt-1 block w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-xs font-medium text-slate-300">
+            <label htmlFor="login-password" className="block text-xs font-medium text-slate-300">
               Password
             </label>
             <input
-              id="password"
+              id="login-password"
+              name="password"
               type="password"
-              disabled
+              required
+              autoComplete="current-password"
+              disabled={isSubmitting}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="••••••••••••"
-              className="mt-1 block w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 placeholder-slate-500 cursor-not-allowed"
+              aria-describedby={error ? 'login-error-msg' : undefined}
+              className="mt-1 block w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
             />
           </div>
 
-          <div className="rounded border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">
-            Authentication placeholder: JWT auth integration with backend RBAC roles (guard, admin) will be wired in upcoming tasks.
-          </div>
+          {error && (
+            <div
+              id="login-error-msg"
+              role="alert"
+              aria-live="polite"
+              className="rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
+            >
+              {error}
+            </div>
+          )}
 
-          <Link
-            to="/dashboard"
-            className="flex w-full justify-center rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
+          <button
+            type="submit"
+            disabled={isSubmitting || !identifier.trim() || !password}
+            className="flex w-full justify-center rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            Enter Console (Bypass Placeholder)
-          </Link>
-        </div>
+            {isSubmitting ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
       </div>
     </div>
   );

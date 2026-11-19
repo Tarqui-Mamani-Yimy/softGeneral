@@ -1,2 +1,1 @@
-// Custom hooks placeholder for softGeneral
-export {};
+export { useAuth } from './useAuth';
