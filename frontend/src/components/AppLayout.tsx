@@ -16,6 +16,12 @@ const navItems: NavItem[] = [
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuth();
+  const canManageCameras = user?.permissions.includes('cameras.manage') ?? false;
+
+  const currentNavItems: NavItem[] = [
+    ...navItems,
+    ...(canManageCameras ? [{ name: 'Try demo', to: '/demo' }] : []),
+  ];
 
   return (
     <div className="flex min-h-screen bg-slate-900 text-slate-100">
@@ -28,7 +34,7 @@ export const AppLayout: React.FC = () => {
           </div>
 
           <nav aria-label="Main Navigation" className="flex flex-col gap-1">
-            {navItems.map((item) => (
+            {currentNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

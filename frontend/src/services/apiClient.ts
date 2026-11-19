@@ -1,9 +1,10 @@
 import type { Alert, AlertReviewPayload } from '../types/alert';
 import type { LoginCredentials, LoginResponse, User } from '../types/auth';
 import type { Camera, CameraCreatePayload, CameraUpdatePayload } from '../types/camera';
+import type { DemoSession } from '../types/demo';
 import type { VideoJob } from '../types/video';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
 const TOKEN_KEY = 'softgeneral_auth_token';
 
 export class ApiError extends Error {
@@ -333,3 +334,64 @@ export async function disableCamera(id: string): Promise<Camera> {
 export async function getHealth(): Promise<HealthResponse> {
   return apiClient<HealthResponse>('/health');
 }
+
+export async function createDemoSession(): Promise<DemoSession> {
+  return apiClient<DemoSession>('/demo/sessions', {
+    method: 'POST',
+  });
+}
+
+export async function getCurrentDemoSession(): Promise<DemoSession | null> {
+  try {
+    return await apiClient<DemoSession>('/demo/sessions/current');
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Asks the backend whether the annotated stream of a demo session is live.
+ * (MediaMTX player pages answer 404 to HEAD even when a stream exists, so the
+ * browser cannot probe them directly.)
+ */
+export async function getDemoStreamStatus(id: string): Promise<{ annotated_ready: boolean }> {
+  return apiClient<{ annotated_ready: boolean }>(`/demo/sessions/${id}/stream`);
+}
+
+export async function deleteDemoSession(id: string): Promise<void> {
+  const normalizedEndpoint = `/demo/sessions/${id}`;
+  const url = `${API_URL}${normalizedEndpoint}`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers,
+  });
+
+  if (!response.ok && response.status !== 404 && response.status !== 204) {
+    if (response.status === 401) {
+      setAuthToken(null);
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
+    }
+    let detail = response.statusText;
+    try {
+      const data = await response.json();
+      if (data && typeof data === 'object' && 'detail' in data) {
+        detail = String((data as { detail: unknown }).detail);
+      }
+    } catch {
+      // response body not JSON
+    }
+    throw new ApiError(response.status, detail);
+  }
+}
+
