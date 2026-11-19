@@ -26,3 +26,6 @@ class Settings(BaseSettings):
     worker_zones_file: str = "../config/zones/example.json"
     worker_clip_before_seconds: float = 3.0
     worker_clip_after_seconds: float = 3.0
+    ffmpeg_binary: str = "ffmpeg"
+    video_transcode_h264: bool = True
+    ffmpeg_timeout_seconds: float = 120.0

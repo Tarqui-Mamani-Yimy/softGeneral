@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from vision.rules.engine import AlertEvent
+from vision.media.transcode import transcode_to_h264
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,8 @@ class EvidenceRecorder:
             path.unlink(missing_ok=True)
         self.created_files.clear()
 
-    @staticmethod
-    def _close(item: dict) -> None:
+    def _close(self, item: dict) -> None:
         if item["writer"] is not None:
             item["writer"].release()
             item["writer"] = None
+            transcode_to_h264(item["clip_path"])

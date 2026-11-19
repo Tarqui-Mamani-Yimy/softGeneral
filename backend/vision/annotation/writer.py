@@ -5,6 +5,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from vision.media.transcode import transcode_to_h264
+
 
 class VideoWriter:
     def __init__(self, path: str | Path, fps: float, frame_size: tuple[int, int]):
@@ -24,6 +26,7 @@ class VideoWriter:
         if self._writer is not None:
             self._writer.release()
             self._writer = None
+            transcode_to_h264(self.path)
 
     def write(self, frame: np.ndarray) -> None:
         if self._writer is None:
