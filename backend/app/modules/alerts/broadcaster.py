@@ -128,28 +128,33 @@ class AlertBroadcaster:
     def disconnect(self, client: BroadcasterClient) -> None:
         self.remove_client(client)
 
-    def check_active_users(self) -> None:
+    def _find_inactive_user_ids(self, user_ids: set[UUID]) -> set[UUID]:
+        """Blocking DB lookup; call it through asyncio.to_thread from async code."""
+        user_repo = self.user_repository_factory()
+        inactive_ids: set[UUID] = set()
+        with self.session_factory() as session:
+            for uid in user_ids:
+                user = user_repo.get_by_id(session, uid)
+                if user is None or not user.is_active:
+                    inactive_ids.add(uid)
+        return inactive_ids
+
+    async def check_active_users(self) -> None:
         if not self.session_factory or not self.clients:
             return
 
-        user_repo = self.user_repository_factory()
         user_ids = {c.user_id for c in self.clients}
-        inactive_ids: set[UUID] = set()
-
         try:
-            with self.session_factory() as session:
-                for uid in user_ids:
-                    user = user_repo.get_by_id(session, uid)
-                    if user is None or not user.is_active:
-                        inactive_ids.add(uid)
+            # Run the database query off the event loop so a slow query never
+            # freezes the API; client bookkeeping stays on the loop thread.
+            inactive_ids = await asyncio.to_thread(self._find_inactive_user_ids, user_ids)
         except Exception as exc:
             logger.debug("Failed to verify active users in broadcaster: %s", exc)
             return
 
-        if inactive_ids:
-            for client in list(self.clients):
-                if client.user_id in inactive_ids:
-                    self.drop_client(client, code=1008)
+        for client in list(self.clients):
+            if client.user_id in inactive_ids:
+                self.drop_client(client, code=1008)
 
     def drop_client(self, client: BroadcasterClient, code: int = 1008) -> None:
         self.remove_client(client)
@@ -158,7 +163,7 @@ class AlertBroadcaster:
         client.enqueue(None)
 
     async def broadcast(self, payload: dict) -> None:
-        self.check_active_users()
+        await self.check_active_users()
 
         for client in list(self.clients):
             ok = client.enqueue(payload)

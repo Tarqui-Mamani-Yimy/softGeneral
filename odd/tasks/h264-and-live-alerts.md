@@ -21,3 +21,5 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 
 - L1 (2026-11-19, user, verbatim): "si"
 - L2: Writer trigger (a): T1 touches only backend/vision media writing; T2 touches alerts module, main.py lifespan and frontend. Disjoint surfaces; backend/README.md notes for T1 are added by the parent.
+- L3: opencode's verification of T2 found two blockers: synchronous DB calls on the event loop in `broadcaster.check_active_users` and in the `main.py` alerts listener (a slow query freezes the whole API). Fixed by the parent with `asyncio.to_thread` (client bookkeeping stays on the loop thread); RED test `test_broadcast_does_not_block_the_event_loop_while_checking_users` went from 0 ticks to passing; live WebSocket seam re-run OK.
+- L4: Non-blocking note (not applied): WebSocket and HTTP alert payloads include `details` as stored; today the worker only writes zone, bbox, frame_index, timestamp_s and model_names (no paths). If other producers add fields later, whitelist them.

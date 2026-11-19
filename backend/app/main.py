@@ -50,9 +50,14 @@ async def run_alerts_listener(app: FastAPI, stop_event: asyncio.Event) -> None:
                 alert_repo = app.dependency_overrides.get(get_alert_repository, get_alert_repository)()
                 session_factory = app.state.session_factory
                 record = None
-                try:
+
+                def load_alert():
                     with session_factory() as session:
-                        record = alert_repo.get_by_id(session, alert_id)
+                        return alert_repo.get_by_id(session, alert_id)
+
+                try:
+                    # Blocking DB call: keep it off the event loop.
+                    record = await asyncio.to_thread(load_alert)
                 except Exception as db_err:
                     logger.debug("Failed to load alert %s from DB: %s", alert_id, db_err)
 

@@ -188,6 +188,42 @@ def test_broadcaster_slow_client_dropped_without_blocking_others():
     asyncio.run(_run())
 
 
+def test_broadcast_does_not_block_the_event_loop_while_checking_users():
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    from app.modules.alerts.broadcaster import BroadcasterClient
+
+    class SlowUserRepository:
+        def get_by_id(self, session, user_id):
+            time.sleep(0.3)  # a slow database query
+            return SimpleNamespace(is_active=True)
+
+    class SessionContext:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    async def _run():
+        broadcaster = AlertBroadcaster(session_factory=SessionContext, user_repository_factory=SlowUserRepository)
+        broadcaster.add_client(BroadcasterClient(websocket=None, user_id=uuid4()))
+        ticks = 0
+
+        async def ticker():
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        task = asyncio.create_task(ticker())
+        await broadcaster.broadcast({"type": "alert", "alert": {}})
+        task.cancel()
+        return ticks
+
+    # With a blocking call the ticker cannot run during the 0.3 s query.
+    assert asyncio.run(_run()) >= 10
+
+
 def test_ws_deactivated_user_closed_on_broadcast(tmp_path: Path):
     client, user_repo, _, app = make_ws_client(tmp_path)
     token = make_token(user_repo.user_id)
