@@ -46,7 +46,21 @@ class AlertRepository:
                    RETURNING id"""),
             {**values, "details": json.dumps(values["details"])},
         )
-        return row.scalar_one()
+        alert_id = row.scalar_one()
+
+        occurred = values.get("occurred_at")
+        occurred_iso = occurred.isoformat() if hasattr(occurred, "isoformat") else str(occurred)
+        payload = json.dumps({
+            "id": str(alert_id),
+            "alert_type": values.get("alert_type"),
+            "occurred_at": occurred_iso,
+        })
+        bind = getattr(session, "bind", None)
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
+        if dialect_name != "sqlite":
+            session.execute(text("SELECT pg_notify('alerts', :payload)"), {"payload": payload})
+
+        return alert_id
 
     def delete_for_video_job(self, session: Session, video_job_id: UUID) -> None:
         session.execute(text("DELETE FROM alerts WHERE video_job_id = :video_job_id"), {"video_job_id": video_job_id})

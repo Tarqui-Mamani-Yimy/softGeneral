@@ -58,11 +58,17 @@ before and after each alert. Alert `occurred_at` is the claimed job's
 - `GET /api/v1/alerts/{id}/snapshot` (permission `alerts.read`) → download JPEG snapshot
 - `GET /api/v1/alerts/{id}/clip` (permission `alerts.read`) → download MP4 clip
 - `POST /api/v1/alerts/{id}/review` (permission `alerts.review`) → review alert (confirmed/false_alarm)
+- `WebSocket /api/v1/alerts/ws` (permission `alerts.read` via first auth frame) → real-time alert broadcasts and ping/pong
 - API docs: http://localhost:8000/docs
 
 The worker re-queues jobs left in `processing` at startup. The current deployment
 assumes a single worker process; add a coordinated scheduler before running more
 than one worker continuously.
+
+Annotated outputs and alert clips are transcoded to H.264 with `ffmpeg` after they
+are closed, so browsers can play them. Configure `FFMPEG_BINARY` (default `ffmpeg`),
+`VIDEO_TRANSCODE_H264` (default `true`) and `FFMPEG_TIMEOUT_SECONDS` (default `120`).
+If `ffmpeg` is unavailable or fails, the original MP4 is kept and a warning is logged.
 
 ## Tests
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../../hooks';
+import { useAuth, useAlertStream } from '../../hooks';
 import {
   listAlerts,
   fetchAlertSnapshotBlob,
@@ -23,6 +23,10 @@ export const AlertsPage: React.FC = () => {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(true);
   const [alertsError, setAlertsError] = useState<string | null>(null);
+
+  // Realtime highlight & sound
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [highlightedAlertIds, setHighlightedAlertIds] = useState<Set<string>>(new Set());
 
   // Evidence state
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
@@ -59,33 +63,86 @@ export const AlertsPage: React.FC = () => {
     };
   }, []);
 
-  const fetchAlertsList = useCallback(async (isPolling = false) => {
+  const playAlertSound = useCallback(() => {
+    if (!soundEnabled) return;
     try {
-      const data = await listAlerts({
-        status: statusFilter || undefined,
-        alert_type: typeFilter || undefined,
-        video_job_id: videoJobIdFilter || undefined,
-      });
-      setAlerts(data);
-      setAlertsError(null);
-
-      // Auto-select first alert if none selected or current selection disappeared
-      setSelectedAlertId((prev) => {
-        if (prev && data.some((a) => a.id === prev)) {
-          return prev;
-        }
-        return data.length > 0 ? data[0].id : null;
-      });
-    } catch (err) {
-      if (!isPolling) {
-        setAlertsError(err instanceof ApiError ? err.detail : 'Failed to load security alerts');
-      }
-    } finally {
-      if (!isPolling) {
-        setIsLoadingAlerts(false);
-      }
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.35);
+    } catch {
+      // Audio autoplay or context may be blocked
     }
-  }, [statusFilter, typeFilter, videoJobIdFilter]);
+  }, [soundEnabled]);
+
+  const handleIncomingAlert = useCallback(
+    (incoming: Alert) => {
+      const matchesStatus = !statusFilter || incoming.status === statusFilter;
+      const matchesType = !typeFilter || incoming.alert_type === typeFilter;
+      const matchesJob = !videoJobIdFilter || incoming.video_job_id === videoJobIdFilter;
+
+      if (matchesStatus && matchesType && matchesJob) {
+        setAlerts((prev) => [incoming, ...prev.filter((a) => a.id !== incoming.id)]);
+        setHighlightedAlertIds((prev) => new Set(prev).add(incoming.id));
+        setTimeout(() => {
+          setHighlightedAlertIds((prev) => {
+            const next = new Set(prev);
+            next.delete(incoming.id);
+            return next;
+          });
+        }, 5000);
+      }
+
+      playAlertSound();
+    },
+    [statusFilter, typeFilter, videoJobIdFilter, playAlertSound],
+  );
+
+  const { status: streamStatus, isConnected } = useAlertStream({
+    onAlert: handleIncomingAlert,
+  });
+
+  const fetchAlertsList = useCallback(
+    async (isPolling = false) => {
+      try {
+        const data = await listAlerts({
+          status: statusFilter || undefined,
+          alert_type: typeFilter || undefined,
+          video_job_id: videoJobIdFilter || undefined,
+        });
+        setAlerts(data);
+        setAlertsError(null);
+
+        // Auto-select first alert if none selected or current selection disappeared
+        setSelectedAlertId((prev) => {
+          if (prev && data.some((a) => a.id === prev)) {
+            return prev;
+          }
+          return data.length > 0 ? data[0].id : null;
+        });
+      } catch (err) {
+        if (!isPolling) {
+          setAlertsError(err instanceof ApiError ? err.detail : 'Failed to load security alerts');
+        }
+      } finally {
+        if (!isPolling) {
+          setIsLoadingAlerts(false);
+        }
+      }
+    },
+    [statusFilter, typeFilter, videoJobIdFilter],
+  );
 
   // Initial and on filter change
   useEffect(() => {
@@ -93,14 +150,17 @@ export const AlertsPage: React.FC = () => {
     fetchAlertsList();
   }, [fetchAlertsList]);
 
-  // Polling every 5s while page is open
+  // Polling every 5s only while disconnected
   useEffect(() => {
+    if (isConnected) {
+      return;
+    }
     const intervalId = setInterval(() => {
       fetchAlertsList(true);
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [fetchAlertsList]);
+  }, [fetchAlertsList, isConnected]);
 
   const selectedAlert = alerts.find((a) => a.id === selectedAlertId) ?? null;
 
@@ -265,10 +325,43 @@ export const AlertsPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Security Alerts</h2>
-          <p className="text-sm text-slate-400">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold tracking-tight text-white">Security Alerts</h2>
+            {streamStatus === 'connected' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-800 bg-emerald-950/80 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live
+              </span>
+            ) : streamStatus === 'reconnecting' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-800 bg-amber-950/80 px-2.5 py-0.5 text-xs font-medium text-amber-300">
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                Reconnecting
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-xs font-medium text-slate-400">
+                <span className="h-2 w-2 rounded-full bg-slate-500" />
+                Offline (Polling)
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-400 mt-0.5">
             Real-time incident detection feed. Review evidence footage and confirm or dismiss alerts.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            aria-pressed={soundEnabled}
+            className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+              soundEnabled
+                ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
+                : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span>Audio Alert: {soundEnabled ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
       </div>
 
@@ -334,7 +427,9 @@ export const AlertsPage: React.FC = () => {
         <div className="lg:col-span-5 space-y-3">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-sm font-semibold text-slate-300">Incident Feed ({alerts.length})</h3>
-            <span className="text-[11px] text-slate-500">Auto-refresh: 5s</span>
+            <span className="text-[11px] text-slate-500">
+              {isConnected ? 'Realtime (WebSocket)' : 'Auto-refresh: 5s'}
+            </span>
           </div>
 
           {alertsError && (
@@ -355,19 +450,29 @@ export const AlertsPage: React.FC = () => {
             <ul className="space-y-2 max-h-[700px] overflow-y-auto pr-1">
               {alerts.map((alert) => {
                 const isSelected = alert.id === selectedAlertId;
+                const isHighlighted = highlightedAlertIds.has(alert.id);
                 return (
                   <li key={alert.id}>
                     <button
                       type="button"
                       onClick={() => setSelectedAlertId(alert.id)}
-                      className={`w-full text-left rounded-lg border p-3.5 transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'border-emerald-500 bg-slate-850 bg-slate-900 shadow-md ring-1 ring-emerald-500/40'
-                          : 'border-slate-800 bg-slate-950 hover:bg-slate-900/60'
+                      className={`w-full text-left rounded-lg border p-3.5 transition-all cursor-pointer ${
+                        isHighlighted
+                          ? 'border-emerald-400 bg-emerald-950/40 ring-2 ring-emerald-400/60 shadow-lg'
+                          : isSelected
+                            ? 'border-emerald-500 bg-slate-850 bg-slate-900 shadow-md ring-1 ring-emerald-500/40'
+                            : 'border-slate-800 bg-slate-950 hover:bg-slate-900/60'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1.5">
-                        {renderTypeBadge(alert.alert_type)}
+                        <div className="flex items-center gap-2">
+                          {renderTypeBadge(alert.alert_type)}
+                          {isHighlighted && (
+                            <span className="inline-flex items-center rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black animate-pulse">
+                              Live
+                            </span>
+                          )}
+                        </div>
                         {renderStatusBadge(alert.status)}
                       </div>
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-2">

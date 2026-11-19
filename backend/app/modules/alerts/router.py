@@ -1,13 +1,22 @@
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path as PathParam, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.modules.alerts.dependencies import get_alert_repository
 from app.modules.alerts.repository import AlertRecord, AlertRepository
 from app.modules.alerts.schemas import AlertResponse, AlertReviewRequest
-from app.modules.auth.dependencies import UserResponseData, get_db_session, require_permission
+from app.modules.auth.dependencies import (
+    UserResponseData,
+    authenticate_token,
+    get_db_session,
+    get_user_repository,
+    require_permission,
+)
+from app.modules.auth.repository import UserRepository
 from app.modules.videos.paths import get_contained_file
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -128,3 +137,83 @@ def review_alert(
     if record is None:
         raise HTTPException(status_code=500, detail="Failed to review alert")
     return to_response(record)
+
+
+@router.websocket("/ws")
+async def alerts_websocket_endpoint(
+    websocket: WebSocket,
+    user_repo: UserRepository = Depends(get_user_repository),
+):
+    await websocket.accept()
+
+    try:
+        auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+    except (asyncio.TimeoutError, WebSocketDisconnect, Exception):
+        try:
+            await websocket.close(code=1008)
+        except Exception:
+            pass
+        return
+
+    if (
+        not isinstance(auth_msg, dict)
+        or auth_msg.get("type") != "auth"
+        or not isinstance(auth_msg.get("token"), str)
+    ):
+        try:
+            await websocket.close(code=1008)
+        except Exception:
+            pass
+        return
+
+    token = auth_msg["token"]
+    app = websocket.app
+    secret = app.state.settings.jwt_secret
+    session_factory = app.state.session_factory
+
+    auth_data = None
+    try:
+        with session_factory() as session:
+            auth_data = authenticate_token(token, secret, session, user_repo)
+    except Exception:
+        auth_data = None
+
+    if auth_data is None or "alerts.read" not in auth_data.permissions:
+        try:
+            await websocket.close(code=1008)
+        except Exception:
+            pass
+        return
+
+    await websocket.send_json({"type": "ready"})
+
+    broadcaster = getattr(app.state, "alert_broadcaster", None)
+    if broadcaster is None:
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+        return
+
+    client = broadcaster.connect(websocket, auth_data.user.id)
+    sender_task = asyncio.create_task(client.run_sender())
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if isinstance(msg, dict) and msg.get("type") == "ping":
+                client.enqueue({"type": "pong"})
+    except (WebSocketDisconnect, asyncio.CancelledError, Exception):
+        pass
+    finally:
+        broadcaster.disconnect(client)
+        sender_task.cancel()
+        try:
+            await asyncio.gather(sender_task, return_exceptions=True)
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
