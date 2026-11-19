@@ -15,7 +15,7 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 |---|---|---|---|---|
 | T1 | S1-S3 | delegated: Sonnet subagent (parallel unit: backend; opencode out of quota) | done | real RED (10 failed) → 143 passed; also fixed stride=1 analyzing no frames |
 | T2 | S4 | delegated: agy via Herdr (parallel unit: frontend) | done | build + lint pass |
-| T3 | all | inline: browser seam (fake webcam crossing → intrusion + stats on the page) + verification | in progress | Chromium + fake webcam with default demo zones: stats visible at 9 s (analysis 3.3 FPS, video 10.0, people 2, latency 433 ms), intrusion demo_stands_left → demo_field at 15 s, hint shown, no page errors |
+| T3 | all | inline: browser seam (fake webcam crossing → intrusion + stats on the page) + verification | done | agy verified 3f3abd6: 6/6 PASS, no blockers (143 passed, integration 12 passed); Chromium + fake webcam with default demo zones: stats visible at 9 s (analysis 3.3 FPS, video 10.0, people 2, latency 433 ms), intrusion demo_stands_left → demo_field at 15 s, hint shown, no page errors |
 
 ## Log
 
