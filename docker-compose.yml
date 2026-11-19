@@ -33,6 +33,7 @@ services:
       - "127.0.0.1:8889:8889"
       - "127.0.0.1:8889:8889/udp"
       - "127.0.0.1:8888:8888"
+      - "127.0.0.1:9997:9997"
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
 

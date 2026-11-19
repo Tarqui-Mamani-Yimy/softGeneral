@@ -32,3 +32,11 @@ class Settings(BaseSettings):
     mediamtx_publish_url: str = "rtsp://127.0.0.1:8554"
     live_analysis_stride: int = 3
     live_metrics_seconds: float = 10.0
+    # Browser demo: where the worker reads the published stream and where the
+    # browser publishes it (WHIP over WebRTC).
+    mediamtx_rtsp_read_url: str = "rtsp://127.0.0.1:8554"
+    demo_whip_base_url: str = "http://localhost:8889"
+    # MediaMTX control API, used server-side to know when an annotated stream is live.
+    mediamtx_api_url: str = "http://127.0.0.1:9997"
+    demo_max_minutes: int = 10
+    live_watch_seconds: float = 3.0

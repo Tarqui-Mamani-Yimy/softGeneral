@@ -1,6 +1,11 @@
 # MediaMTX configuration for softGeneral local development & camera simulation
 # Allows publishing on any path locally with WebRTC and RTSP enabled.
 
+# Control API: used server-side by the backend to know when a stream is live.
+# Bound to 127.0.0.1 in docker-compose; never expose it publicly.
+api: yes
+apiAddress: :9997
+
 rtsp: yes
 rtspAddress: :8554
 
@@ -16,3 +21,17 @@ webrtcAllowOrigins:
 
 paths:
   all_others:
+
+# Local development permissions. Requests reach MediaMTX through the Docker network
+# (not from 127.0.0.1 inside the container), so the control API must be allowed
+# explicitly. Every port is bound to 127.0.0.1 on the host. Before any deployment,
+# replace this with authenticated users or an HTTP auth hook (see odd/tasks/mode-b-realtime.md L3).
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api

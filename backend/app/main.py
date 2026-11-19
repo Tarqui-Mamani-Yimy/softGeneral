@@ -16,6 +16,7 @@ from app.modules.alerts.router import router as alerts_router
 from app.modules.auth.dependencies import get_user_repository
 from app.modules.auth.router import router as auth_router
 from app.modules.cameras.router import router as cameras_router
+from app.modules.demo.router import router as demo_router
 from app.modules.health.router import router as health_router
 from app.modules.videos.router import router as videos_router
 
@@ -127,4 +128,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(videos_router, prefix=API_PREFIX)
     app.include_router(alerts_router, prefix=API_PREFIX)
     app.include_router(cameras_router, prefix=API_PREFIX)
+    app.include_router(demo_router, prefix=API_PREFIX)
     return app

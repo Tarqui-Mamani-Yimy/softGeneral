@@ -65,6 +65,9 @@ before and after each alert. Alert `occurred_at` is the claimed job's
 - `POST /api/v1/cameras` (permission `cameras.manage`) → register camera (code, source_type, source_url)
 - `PATCH /api/v1/cameras/{id}` (permission `cameras.manage`) → update camera metadata or stream source
 - `POST /api/v1/cameras/{id}/disable` (permission `cameras.manage`) → disable camera feed
+- `POST /api/v1/demo/sessions` (permission `cameras.manage`) → start a browser demo: creates a temporary `demo_<8 hex>` camera (ending any previous demo) and returns `{id, camera_code, publish_path, whip_url, live_path, expires_at}` (never `source_url`)
+- `GET /api/v1/demo/sessions/current` (permission `cameras.manage`) → the active, unexpired demo session or 404
+- `DELETE /api/v1/demo/sessions/{id}` (permission `cameras.manage`) → end a demo session (404 for non-demo cameras)
 - API docs: http://localhost:8000/docs
 
 The worker re-queues jobs left in `processing` at startup. The current deployment
@@ -75,6 +78,19 @@ Annotated outputs and alert clips are transcoded to H.264 with `ffmpeg` after th
 are closed, so browsers can play them. Configure `FFMPEG_BINARY` (default `ffmpeg`),
 `VIDEO_TRANSCODE_H264` (default `true`) and `FFMPEG_TIMEOUT_SECONDS` (default `120`).
 If `ffmpeg` is unavailable or fails, the original MP4 is kept and a warning is logged.
+
+## Browser demo and live watcher
+
+The API never runs vision work. `python live_worker.py --watch` supervises cameras:
+every `LIVE_WATCH_SECONDS` (default `3`) it starts a runner for each new active
+`rtsp`/`webcam` camera, stops runners of disabled cameras, restarts crashed runners
+with backoff, and disables `demo_` cameras older than `DEMO_MAX_MINUTES` (default
+`10`; audited as `camera.disabled` with `{"reason": "demo_expired"}` and no user).
+`--watch` is mutually exclusive with `--camera` and `--all`, which keep working as before.
+
+Demo settings: `MEDIAMTX_RTSP_READ_URL` (default `rtsp://127.0.0.1:8554`, where the
+worker reads the browser stream) and `DEMO_WHIP_BASE_URL` (default
+`http://localhost:8889`, where the browser publishes over WHIP).
 
 ## Tests
 
