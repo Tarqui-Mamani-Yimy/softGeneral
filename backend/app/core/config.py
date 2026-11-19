@@ -29,3 +29,6 @@ class Settings(BaseSettings):
     ffmpeg_binary: str = "ffmpeg"
     video_transcode_h264: bool = True
     ffmpeg_timeout_seconds: float = 120.0
+    mediamtx_publish_url: str = "rtsp://127.0.0.1:8554"
+    live_analysis_stride: int = 3
+    live_metrics_seconds: float = 10.0

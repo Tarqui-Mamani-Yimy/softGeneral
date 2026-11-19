@@ -43,5 +43,5 @@ echo "Press Ctrl+C to terminate the stream."
 trap 'echo ""; echo "Stream stopped by user."; exit 0' INT TERM
 
 ffmpeg -re -stream_loop -1 -i "$VIDEO_FILE" \
-  -c:v libx264 -preset veryfast -tune zerolatency \
+  -c:v libx264 -preset veryfast -tune zerolatency -g 20 -keyint_min 20 -sc_threshold 0 \
   -an -f rtsp -rtsp_transport tcp "$RTSP_URL"

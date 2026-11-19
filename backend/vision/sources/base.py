@@ -11,6 +11,7 @@ class VideoSource(Protocol, AbstractContextManager):
     fps: float
     frame_size: tuple[int, int]
     frame_count: int | None
+    dropped_frames: int
 
     def read(self) -> np.ndarray | None:
         ...
