@@ -42,8 +42,9 @@ before and after each alert. Alert `occurred_at` is the claimed job's
 
 ```bash
 .venv/bin/uvicorn app.main:create_app --factory --reload  # API on http://localhost:8000
-.venv/bin/python worker.py                    # vision worker (single worker)
+.venv/bin/python worker.py                    # vision worker (Mode A uploaded videos)
 .venv/bin/python worker.py --once             # process at most one queued job
+.venv/bin/python live_worker.py --camera <code> # live camera worker (Mode B real-time stream)
 .venv/bin/python -m app.modules.users.create_admin --username admin --email admin@example.com --full-name "First Admin"
 ```
 
@@ -59,6 +60,11 @@ before and after each alert. Alert `occurred_at` is the claimed job's
 - `GET /api/v1/alerts/{id}/clip` (permission `alerts.read`) → download MP4 clip
 - `POST /api/v1/alerts/{id}/review` (permission `alerts.review`) → review alert (confirmed/false_alarm)
 - `WebSocket /api/v1/alerts/ws` (permission `alerts.read` via first auth frame) → real-time alert broadcasts and ping/pong
+- `GET /api/v1/cameras` (permission `cameras.read`) → list cameras (`source_url` hidden without `cameras.manage`)
+- `GET /api/v1/cameras/{id}` (permission `cameras.read`) → get camera details
+- `POST /api/v1/cameras` (permission `cameras.manage`) → register camera (code, source_type, source_url)
+- `PATCH /api/v1/cameras/{id}` (permission `cameras.manage`) → update camera metadata or stream source
+- `POST /api/v1/cameras/{id}/disable` (permission `cameras.manage`) → disable camera feed
 - API docs: http://localhost:8000/docs
 
 The worker re-queues jobs left in `processing` at startup. The current deployment

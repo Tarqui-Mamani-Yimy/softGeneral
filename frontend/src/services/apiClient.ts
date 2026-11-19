@@ -1,5 +1,6 @@
 import type { Alert, AlertReviewPayload } from '../types/alert';
 import type { LoginCredentials, LoginResponse, User } from '../types/auth';
+import type { Camera, CameraCreatePayload, CameraUpdatePayload } from '../types/camera';
 import type { VideoJob } from '../types/video';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
@@ -298,6 +299,34 @@ export async function reviewAlert(id: string, payload: AlertReviewPayload): Prom
   return apiClient<Alert>(`/alerts/${id}/review`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function listCameras(): Promise<Camera[]> {
+  return apiClient<Camera[]>('/cameras');
+}
+
+export async function getCamera(id: string): Promise<Camera> {
+  return apiClient<Camera>(`/cameras/${id}`);
+}
+
+export async function createCamera(payload: CameraCreatePayload): Promise<Camera> {
+  return apiClient<Camera>('/cameras', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCamera(id: string, payload: CameraUpdatePayload): Promise<Camera> {
+  return apiClient<Camera>(`/cameras/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function disableCamera(id: string): Promise<Camera> {
+  return apiClient<Camera>(`/cameras/${id}/disable`, {
+    method: 'POST',
   });
 }
 

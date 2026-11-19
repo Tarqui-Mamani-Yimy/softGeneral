@@ -1,0 +1,18 @@
+# MediaMTX configuration for softGeneral local development & camera simulation
+# Allows publishing on any path locally with WebRTC and RTSP enabled.
+
+rtsp: yes
+rtspAddress: :8554
+
+hls: yes
+hlsAddress: :8888
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8889
+webrtcAllowOrigins:
+  - "http://localhost:5173"
+  - "http://127.0.0.1:5173"
+
+paths:
+  all_others:
