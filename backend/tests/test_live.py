@@ -231,3 +231,26 @@ def test_publisher_and_evidence_use_the_first_real_frame_size(tmp_path):
 
     assert sizes == {"publisher": (80, 60), "evidence": (80, 60)}
     assert summary.frames_read == 3
+
+
+def test_publisher_encodes_h264_constrained_baseline_for_webrtc_browsers(monkeypatch):
+    """Firefox only plays H.264 Constrained Baseline over WebRTC; libx264's default
+    High profile makes MediaMTX close the viewer with "codecs not supported by client"."""
+    import subprocess
+
+    from live.publisher import RTSPPublisher
+
+    captured = {}
+
+    class FakeProcess:
+        stdin = stderr = None
+        def poll(self): return None
+
+    monkeypatch.setattr(subprocess, "Popen", lambda command, **kwargs: captured.setdefault("command", command) and FakeProcess())
+    RTSPPublisher("rtsp://127.0.0.1:8554", "cam", 10.0, (8, 6))._start()
+
+    command = captured["command"]
+    assert command[command.index("-profile:v") + 1] == "baseline"
+    assert command[command.index("-bf") + 1] == "0"
+    # keyframe every 2 s so a viewer that joins late sees the picture quickly
+    assert command[command.index("-g") + 1] == "20"
