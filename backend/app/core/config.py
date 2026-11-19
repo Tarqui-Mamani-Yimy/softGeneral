@@ -13,5 +13,7 @@ class Settings(BaseSettings):
     app_name: str = "softGeneral API"
     app_env: str = "development"
     database_url: str = "postgresql+psycopg://softgeneral:change-me@localhost:5432/softgeneral"
+    jwt_secret: str | None = None
+    jwt_expire_minutes: int = 60
     # Never "*": the API will send credentials (JWT) from the browser.
     cors_origins: list[str] = ["http://localhost:5173"]

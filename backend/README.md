@@ -26,13 +26,15 @@ python3 -m venv .venv
 ```
 
 Settings come from environment variables or the repository-root `.env`:
-`DATABASE_URL`, `APP_ENV`, `CORS_ORIGINS` (JSON list, default `["http://localhost:5173"]`).
+`DATABASE_URL`, `APP_ENV`, `CORS_ORIGINS` (JSON list, default `["http://localhost:5173"]`),
+`JWT_SECRET` (required for authentication), and `JWT_EXPIRE_MINUTES` (default 60).
 
 ## Run
 
 ```bash
-.venv/bin/uvicorn app.main:app --reload       # API on http://localhost:8000
+.venv/bin/uvicorn app.main:create_app --factory --reload  # API on http://localhost:8000
 .venv/bin/python worker.py                    # vision worker
+.venv/bin/python -m app.modules.users.create_admin --username admin --email admin@example.com --full-name "First Admin"
 ```
 
 - `GET /api/v1/health` → `{"status": "ok"}`
