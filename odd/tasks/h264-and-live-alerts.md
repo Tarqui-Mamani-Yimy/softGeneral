@@ -15,7 +15,7 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 |---|---|---|---|---|
 | T1 | S1 | delegated: opencode via Herdr (parallel unit: vision media) | done | seam: outputs and both alert clips report codec h264 (ffprobe); no temp files left; not a high-risk item, no separate verifier |
 | T2 | S2-S4 | delegated: agy via Herdr (parallel unit: alerts realtime API + UI) | done | 79 passed / 7 skipped, integration 6 passed; seam: WS ready + 2 live intrusion alerts from the worker, no path fields; bad token and silent client closed 1008 |
-| T3 | all | inline: seam check (worker → NOTIFY → WebSocket; clip plays as H.264) + cross verification (Risk items 2 and 4) | in progress | seam passed; opencode verifying T2 |
+| T3 | all | inline: seam check (worker → NOTIFY → WebSocket; clip plays as H.264) + cross verification (Risk items 2 and 4) | done | seam passed; opencode found 2 blockers (L3), fixed in afc5f5a, bounded recheck PASS on both; 80 passed / 7 skipped |
 
 ## Log
 
