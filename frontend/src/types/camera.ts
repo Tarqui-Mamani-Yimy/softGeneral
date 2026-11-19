@@ -28,3 +28,19 @@ export interface CameraUpdatePayload {
   source_url?: string;
   is_active?: boolean;
 }
+
+export interface CameraMetrics {
+  analysis_fps: number;
+  published_fps: number;
+  dropped_frames: number;
+  frame_to_alert_ms: number | null;
+  people_tracked: number;
+  detections: Record<string, number>;
+  updated_at: string;
+}
+
+export interface CameraMetricsMessage {
+  type: 'camera_metrics';
+  camera_id: string;
+  metrics: CameraMetrics;
+}

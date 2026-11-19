@@ -85,6 +85,15 @@ export const DemoPage: React.FC = () => {
   // Check if demo is currently active in any setup or streaming state
   const isDemoActive = status !== 'idle' && status !== 'error';
 
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleIncomingAlert = useCallback(
     (alert: Alert) => {
       const activeId = activeSessionRef.current?.id;
@@ -95,10 +104,15 @@ export const DemoPage: React.FC = () => {
     []
   );
 
-  useAlertStream({
+  const { metricsByCamera } = useAlertStream({
     enabled: isDemoActive && !!session,
     onAlert: handleIncomingAlert,
   });
+
+  const currentMetrics = session ? metricsByCamera[session.id] ?? null : null;
+  const secondsAgo = currentMetrics
+    ? Math.max(0, Math.floor((now - new Date(currentMetrics.updated_at).getTime()) / 1000))
+    : 0;
 
   // Clean up all resources when stopping demo
   const cleanupAll = useCallback(async (deleteRemoteSession = true) => {
@@ -586,8 +600,104 @@ export const DemoPage: React.FC = () => {
               <p className="text-[11px] text-slate-500">
                 Low-latency WebRTC output rendered from MediaMTX path <span className="font-mono text-emerald-400">{session?.live_path ?? 'demo_*'}</span>.
               </p>
+              <div className="rounded border border-emerald-900/40 bg-emerald-950/30 p-2.5 text-xs text-emerald-300">
+                To trigger an intrusion alert: step out of the frame to the left or right, then walk back into the center and stay a few seconds.
+              </div>
             </section>
           </div>
+
+          {/* Live Statistics Panel */}
+          <section
+            aria-labelledby="live-stats-title"
+            aria-live="polite"
+            className="rounded-lg border border-slate-800 bg-slate-950 p-4 space-y-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <h3 id="live-stats-title" className="text-sm font-semibold text-slate-200">
+                  Live statistics
+                </h3>
+                {currentMetrics && secondsAgo <= 10 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Active
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                {!currentMetrics ? (
+                  <span className="text-slate-500 italic">No data yet</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>updated {secondsAgo}s ago</span>
+                    {secondsAgo > 10 && (
+                      <span className="rounded bg-amber-950/80 border border-amber-800 px-1.5 py-0.2 text-[10px] font-semibold text-amber-300">
+                        stale
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {!currentMetrics ? (
+              <div className="py-4 text-center text-xs text-slate-500">
+                {isDemoActive
+                  ? 'Awaiting telemetry metrics from live vision worker...'
+                  : 'No data yet. Start the demo to stream real-time analysis statistics.'}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
+                    <span className="block text-[11px] font-medium text-slate-400">Analysis FPS</span>
+                    <span className="text-lg font-bold font-mono text-emerald-400">
+                      {currentMetrics.analysis_fps.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
+                    <span className="block text-[11px] font-medium text-slate-400">Video FPS</span>
+                    <span className="text-lg font-bold font-mono text-slate-100">
+                      {currentMetrics.published_fps.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
+                    <span className="block text-[11px] font-medium text-slate-400">People tracked</span>
+                    <span className="text-lg font-bold font-mono text-sky-400">
+                      {currentMetrics.people_tracked}
+                    </span>
+                  </div>
+                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
+                    <span className="block text-[11px] font-medium text-slate-400">Last alert latency</span>
+                    <span className="text-lg font-bold font-mono text-amber-300">
+                      {currentMetrics.frame_to_alert_ms !== null && currentMetrics.frame_to_alert_ms !== undefined
+                        ? `${Math.round(currentMetrics.frame_to_alert_ms)} ms`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <span className="block text-[11px] font-medium text-slate-400">Detections by type:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {Object.entries(currentMetrics.detections).length === 0 ? (
+                      <span className="text-xs text-slate-500 italic">No detections in current frame</span>
+                    ) : (
+                      Object.entries(currentMetrics.detections).map(([label, count]) => (
+                        <span
+                          key={label}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-xs text-slate-200"
+                        >
+                          <span className="font-semibold text-emerald-400 capitalize">{label}:</span>
+                          <span className="font-mono">{count}</span>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Right Column: Live Alerts Panel */}
