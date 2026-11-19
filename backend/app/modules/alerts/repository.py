@@ -35,6 +35,22 @@ class AlertRecord:
 
 
 class AlertRepository:
+    def create_alert(self, session: Session, **values) -> UUID:
+        row = session.execute(
+            text("""INSERT INTO alerts
+                   (id, alert_type, video_job_id, occurred_at, confidence, track_id,
+                    snapshot_path, clip_path, details, status)
+                   VALUES (:id, :alert_type, :video_job_id, :occurred_at, :confidence,
+                           :track_id, :snapshot_path, :clip_path,
+                           CAST(:details AS jsonb), 'pending')
+                   RETURNING id"""),
+            {**values, "details": json.dumps(values["details"])},
+        )
+        return row.scalar_one()
+
+    def delete_for_video_job(self, session: Session, video_job_id: UUID) -> None:
+        session.execute(text("DELETE FROM alerts WHERE video_job_id = :video_job_id"), {"video_job_id": video_job_id})
+
     def get_by_id(self, session: Session, alert_id: UUID) -> AlertRecord | None:
         row = session.execute(
             text("""SELECT id, alert_type, camera_id, video_job_id, occurred_at, confidence, track_id,

@@ -138,10 +138,18 @@ def test_runner_stop_requeues_job_and_removes_partial_output(tmp_path):
         stop_event.set()
         on_progress(10)
 
+    class FakeAlertRepository:
+        deleted_for = []
+
+        def delete_for_video_job(self, session, job_id):
+            self.deleted_for.append(job_id)
+
+    alerts = FakeAlertRepository()
     runner = VideoJobRunner(
         session_factory=lambda: SessionContext(),
         settings=settings(tmp_path),
         repository=repository,
+        alert_repository=alerts,
         pipeline=pipeline,
         source_factory=lambda path: FakeSource(),
         writer_factory=lambda path, fps, frame_size: FakeWriter(path),
@@ -149,6 +157,7 @@ def test_runner_stop_requeues_job_and_removes_partial_output(tmp_path):
 
     runner.run_once(stop_event)
 
+    assert alerts.deleted_for == [repository.job.id]
     assert repository.requeued[-1] == repository.job.id
     assert not list((tmp_path / "outputs").glob("*"))
 

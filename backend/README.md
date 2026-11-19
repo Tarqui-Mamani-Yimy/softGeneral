@@ -32,7 +32,11 @@ Settings come from environment variables or the repository-root `.env`:
 `STORAGE_DIR` (video upload path, default `../datos`), and
 `MAX_UPLOAD_MB` (maximum video upload size in MB, default 500).
 Worker settings are `WORKER_POLL_SECONDS` (default 2), `WORKER_STRIDE` (default 2),
-and `WORKER_MODELS` (default `person,armas,fuegoHumo`).
+and `WORKER_MODELS` (default `person,armas,fuegoHumo`). Rules use
+`WORKER_RULES_FILE` (default `../config/rules.yaml`) and `WORKER_ZONES_FILE`
+(default `../config/zones/example.json`); clip windows default to three seconds
+before and after each alert. Alert `occurred_at` is the claimed job's
+`started_at` plus the pipeline timestamp in seconds.
 
 ## Run
 

@@ -22,3 +22,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = 2.0
     worker_stride: int = 2
     worker_models: str = "person,armas,fuegoHumo"
+    worker_rules_file: str = "../config/rules.yaml"
+    worker_zones_file: str = "../config/zones/example.json"
+    worker_clip_before_seconds: float = 3.0
+    worker_clip_after_seconds: float = 3.0

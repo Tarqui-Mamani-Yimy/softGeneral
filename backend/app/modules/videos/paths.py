@@ -11,7 +11,9 @@ def get_contained_file(
     if not candidate_path:
         raise HTTPException(status_code=404, detail=missing_detail)
     storage_root = Path(storage_dir).resolve()
-    resolved_path = Path(candidate_path).resolve()
+    # Relative paths (alert evidence) are relative to STORAGE_DIR, never to the
+    # process working directory. Absolute paths (video outputs) are kept as is.
+    resolved_path = (storage_root / candidate_path).resolve()
     try:
         resolved_path.relative_to(storage_root)
     except ValueError:

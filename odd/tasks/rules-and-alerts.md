@@ -19,7 +19,7 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 |---|---|---|---|---|
 | T1 | S1-S5 | delegated: opencode via Herdr (parallel unit: pure rules engine + config) | done | 12 vision tests pass (rerun by parent); engine imports without torch |
 | T2 | S6-S7 | delegated: agy via Herdr (parallel unit: alerts API + page) | done | 53 passed / 5 skipped, integration 4 passed, frontend build + lint pass (rerun by parent); review uses conditional UPDATE ... WHERE status='pending' |
-| T3 | S8 | delegated: opencode via Herdr (sequential: depends on T1+T2) | in progress | |
+| T3 | S8 | delegated: opencode via Herdr (sequential: depends on T1+T2); 2 integration bugs fixed inline by parent (L4, L5) | done | 66 passed / 6 skipped, integration 5 passed; seam: real people crossing stands→field produced 2 intrusion alerts with snapshot + 41/61-frame clips, review 200 then 409, audit alert.confirmed |
 | T4 | all | seam check on a throwaway database + independent verification (Risk item 2: review/audit) | pending | |
 
 ## Log
@@ -27,3 +27,5 @@ Branch: feat/project-bootstrap · Delivery: ask-on-risk · Test runner: pytest (
 - L1 (2026-11-19, user, verbatim): "si, vamos con esa, la parte de los desplegues, lo deajremos para despues, dime que tareas faltan"
 - L2: Writer trigger (a): T1 (pure engine, no DB/HTTP) and T2 (API + UI over the existing `alerts` table) are independent with disjoint surfaces. T3 depends on both and runs after.
 - L3: No real football video is available yet; thresholds are defaults to tune later with real footage.
+- L4: Seam test found the worker calling `create_alert` on `VideoRepository` (the unit tests used one fake with both roles), so every job with an alert failed; the stop path also skipped alert cleanup through `hasattr`. Fixed by injecting `AlertRepository` as `alert_repository`; RED tests added in `tests/test_alerts_worker.py`.
+- L5: Seam test found snapshot/clip returning 404: `get_contained_file` resolved relative evidence paths against the process working directory instead of STORAGE_DIR. Fixed in `app/modules/videos/paths.py`; RED tests in `tests/test_paths.py` (relative, absolute, traversal, symlink).
