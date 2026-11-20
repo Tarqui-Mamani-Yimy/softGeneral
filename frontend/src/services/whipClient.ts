@@ -7,15 +7,15 @@ export interface WhipConnection {
 
 export function resolveWhipUrl(whipUrl: string): string {
   if (whipUrl.startsWith('http://') || whipUrl.startsWith('https://')) {
-    // If on HTTPS, rewrite insecure HTTP to avoid Mixed Content
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && whipUrl.startsWith('http://')) {
-      try {
-        const parsed = new URL(whipUrl);
-        // Proxy through Nginx /mediamtx/ endpoint
-        return `${window.location.protocol}//${window.location.host}/mediamtx${parsed.pathname}`;
-      } catch {
-        // keep whipUrl
+    try {
+      const parsed = new URL(whipUrl);
+      // When accessed from a browser, always use the current window's origin to avoid CORS / www mismatches
+      if (typeof window !== 'undefined') {
+        const path = parsed.pathname.startsWith('/mediamtx') ? parsed.pathname : `/mediamtx${parsed.pathname}`;
+        return `${window.location.origin}${path}`;
       }
+    } catch {
+      // keep whipUrl
     }
     return whipUrl;
   }

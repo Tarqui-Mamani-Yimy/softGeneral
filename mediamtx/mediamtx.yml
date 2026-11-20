@@ -15,9 +15,11 @@ hlsAddress: :8888
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8889
+webrtcAdditionalHosts:
+  - "44.222.202.203"
+  - "xavioverland.com"
 webrtcAllowOrigins:
-  - "http://localhost:5173"
-  - "http://127.0.0.1:5173"
+  - "*"
 
 paths:
   all_others:
