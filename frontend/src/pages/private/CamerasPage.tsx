@@ -20,7 +20,6 @@ export const CamerasPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Form modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
   const [formCode, setFormCode] = useState('');
@@ -37,7 +36,7 @@ export const CamerasPage: React.FC = () => {
       setCameras(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : 'Failed to load cameras list');
+      setError(err instanceof ApiError ? err.detail : 'Error al consultar la matriz de cámaras');
     } finally {
       setIsLoading(false);
     }
@@ -79,16 +78,17 @@ export const CamerasPage: React.FC = () => {
     e.preventDefault();
     setFormError(null);
 
-    // Validation
     if (!editingCamera) {
       if (!CODE_REGEX.test(formCode)) {
-        setFormError('Code must start with lowercase letter, contain only a-z, 0-9, and underscore (2-32 chars).');
+        setFormError(
+          'El código identificador debe iniciar con letra minúscula y contener solo a-z, 0-9 o guion bajo (2-32 caracteres).'
+        );
         return;
       }
     }
 
     if (!formName.trim()) {
-      setFormError('Camera name is required.');
+      setFormError('El nombre descriptivo del canal es obligatorio.');
       return;
     }
 
@@ -96,12 +96,12 @@ export const CamerasPage: React.FC = () => {
       if (formSourceType === 'rtsp') {
         const lower = formSourceUrl.trim().toLowerCase();
         if (!lower.startsWith('rtsp://') && !lower.startsWith('rtsps://')) {
-          setFormError('RTSP source URL must start with rtsp:// or rtsps://');
+          setFormError('El flujo de origen RTSP debe iniciar con rtsp:// o rtsps://');
           return;
         }
       } else if (formSourceType === 'webcam') {
         if (!/^\d+$/.test(formSourceUrl.trim())) {
-          setFormError('Webcam source URL must be device index digits (e.g. 0)');
+          setFormError('Para dispositivo local ingrese el índice numérico (ej. 0)');
           return;
         }
       }
@@ -128,126 +128,142 @@ export const CamerasPage: React.FC = () => {
       closeModal();
       await loadCameras();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.detail : 'Failed to save camera');
+      setFormError(err instanceof ApiError ? err.detail : 'Error al guardar la configuración del canal');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDisable = async (cam: Camera) => {
-    if (!confirm(`Are you sure you want to disable camera '${cam.name}'?`)) {
+    if (!confirm(`¿Confirma dar de baja el canal de cámara "${cam.name}" (${cam.code})?`)) {
       return;
     }
     try {
       await disableCamera(cam.id);
       await loadCameras();
     } catch (err) {
-      alert(err instanceof ApiError ? err.detail : 'Failed to disable camera');
+      alert(err instanceof ApiError ? err.detail : 'Error al desactivar la cámara');
     }
   };
 
   const activeCameras = cameras.filter((c) => c.is_active);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Live Camera Surveillance</h2>
-          <p className="text-sm text-slate-400">
-            Real-time low-latency video streams from stadium cameras via WebRTC.
-          </p>
+    <div className="space-y-5">
+      {/* Barra superior */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#1e2330] pb-4">
+        <div className="flex items-center gap-3 text-xs">
+          <div className="rounded border border-[#222836] bg-[#12151c] px-3 py-1.5 flex items-center gap-2">
+            <span className="text-slate-400">Canales en Línea:</span>
+            <span className="font-mono font-bold text-white">{activeCameras.length}</span>
+          </div>
+          <div className="rounded border border-[#222836] bg-[#12151c] px-3 py-1.5 flex items-center gap-2 font-mono text-[11px] text-slate-400">
+            <span>SERVIDOR DE MEDIOS:</span>
+            <span className="text-blue-400">{MEDIAMTX_URL}</span>
+          </div>
         </div>
 
         {canManage && (
           <button
             type="button"
             onClick={openCreateModal}
-            className="rounded bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
+            className="inline-flex items-center gap-2 rounded bg-blue-600 hover:bg-blue-500 px-3.5 py-2 text-xs font-medium text-white transition-colors cursor-pointer self-start sm:self-auto"
           >
-            + Register New Camera
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Dar de Alta Cámara
           </button>
         )}
       </div>
 
       {error && (
-        <div role="alert" className="rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+        <div role="alert" className="rounded border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-300">
           {error}
         </div>
       )}
 
       {isLoading ? (
-        <div role="status" className="rounded-lg border border-slate-800 bg-slate-950 p-12 text-center text-xs text-slate-500">
-          Loading surveillance cameras...
+        <div role="status" className="rounded-md border border-[#1e2330] bg-[#12151c] p-12 text-center text-xs text-slate-500">
+          Consultando canales de videovigilancia...
         </div>
       ) : activeCameras.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-950 p-12 text-center text-xs text-slate-500 space-y-2">
-          <p>No active cameras registered in the system.</p>
+        <div className="rounded-md border border-[#1e2330] bg-[#12151c] p-12 text-center space-y-2">
+          <p className="text-xs font-medium text-slate-300">No hay canales de cámara activos en la matriz.</p>
           {canManage && (
-            <p className="text-slate-400">Click "+ Register New Camera" above to configure your first camera feed.</p>
+            <p className="text-[11px] text-slate-500">
+              Utilice el botón "Dar de Alta Cámara" para vincular un flujo RTSP o dispositivo local.
+            </p>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {activeCameras.map((camera) => {
             const playerUrl = `${MEDIAMTX_URL}/${camera.live_path}`;
             return (
               <div
                 key={camera.id}
-                className="flex flex-col justify-between rounded-lg border border-slate-800 bg-slate-950 p-4 shadow-md"
+                className="flex flex-col justify-between rounded-md border border-[#1e2330] bg-[#12151c] overflow-hidden"
               >
-                <div className="space-y-3">
-                  {/* Embedded WebRTC Live Player */}
-                  <div className="relative aspect-video w-full overflow-hidden rounded-md border border-slate-800 bg-black">
+                <div>
+                  {/* Cabecera OSD de Monitor */}
+                  <div className="border-b border-[#1e2330] bg-[#161a23] px-3.5 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                      <span className="font-mono text-xs font-semibold text-white truncate">
+                        {camera.code.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-slate-400 truncate">• {camera.name}</span>
+                    </div>
+                    <span className="rounded bg-[#0e1117] border border-[#252b3b] px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-300">
+                      {camera.source_type}
+                    </span>
+                  </div>
+
+                  {/* Visor 16:9 */}
+                  <div className="relative aspect-video w-full bg-black border-b border-[#1e2330]">
                     <iframe
                       src={playerUrl}
-                      title={`${camera.name} live feed`}
+                      title={`Canal en vivo ${camera.name}`}
                       allow="autoplay"
                       className="h-full w-full border-0"
                     />
                   </div>
 
-                  {/* Camera Metadata */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-bold text-white capitalize">{camera.name}</h4>
-                      <p className="text-xs text-slate-400">{camera.location || 'Stadium Ground'}</p>
+                  {/* Metadatos técnicos */}
+                  <div className="p-3.5 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Sector / Ubicación:</span>
+                      <span className="text-slate-200 font-medium">{camera.location || 'Sector General'}</span>
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Live
-                    </span>
-                  </div>
-
-                  <div className="text-[11px] text-slate-400 space-y-0.5">
-                    <p>
-                      Code: <span className="font-mono text-slate-200">{camera.code}</span>
-                    </p>
-                    <p>
-                      Stream: <span className="font-mono text-emerald-400">{camera.live_path}</span>
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Ruta MediaMTX:</span>
+                      <span className="font-mono text-blue-400">{camera.live_path}</span>
+                    </div>
                     {canManage && camera.source_url && (
-                      <p className="truncate text-slate-500">
-                        Source: <span className="font-mono text-slate-400">{camera.source_url}</span>
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-slate-500 flex-shrink-0">Origen:</span>
+                        <span className="font-mono text-slate-400 truncate">{camera.source_url}</span>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {canManage && (
-                  <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-800/80 pt-3">
+                  <div className="border-t border-[#1a1f2b] bg-[#0e1117] px-3.5 py-2.5 flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => openEditModal(camera)}
-                      className="rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
+                      className="rounded border border-[#282e3d] bg-[#161a24] hover:bg-[#1e2433] px-2.5 py-1 text-[11px] font-medium text-slate-200 transition-colors cursor-pointer"
                     >
-                      Edit
+                      Configurar
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDisable(camera)}
-                      className="rounded border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 px-2.5 py-1 text-xs font-medium text-rose-300 transition-colors cursor-pointer"
+                      className="rounded border border-[#282e3d] bg-[#161a24] hover:border-red-800/60 hover:bg-red-950/40 hover:text-red-300 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors cursor-pointer"
                     >
-                      Disable
+                      Desactivar
                     </button>
                   </div>
                 )}
@@ -257,25 +273,34 @@ export const CamerasPage: React.FC = () => {
         </div>
       )}
 
-      {/* Admin Camera Management Modal */}
+      {/* Modal de Configuración de Canal */}
       {isModalOpen && canManage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-950 p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-4">
-              {editingCamera ? `Edit Camera: ${editingCamera.name}` : 'Register New Camera'}
-            </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-md border border-[#242a38] bg-[#12151c] shadow-2xl overflow-hidden">
+            <div className="border-b border-[#1e2330] bg-[#161a23] px-5 py-3.5 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">
+                {editingCamera ? `Configurar Canal: ${editingCamera.code}` : 'Alta de Nuevo Canal de Video'}
+              </h3>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
 
-            {formError && (
-              <div role="alert" className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-400">
-                {formError}
-              </div>
-            )}
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              {formError && (
+                <div role="alert" className="rounded border border-red-500/30 bg-red-950/30 p-2.5 text-xs text-red-300">
+                  {formError}
+                </div>
+              )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
               {!editingCamera && (
                 <div>
                   <label htmlFor="camera-code" className="block text-xs font-medium text-slate-300 mb-1">
-                    Camera Code (slug)
+                    Código Identificador (ID Técnico) *
                   </label>
                   <input
                     id="camera-code"
@@ -283,18 +308,18 @@ export const CamerasPage: React.FC = () => {
                     required
                     value={formCode}
                     onChange={(e) => setFormCode(e.target.value.toLowerCase())}
-                    placeholder="e.g. cam_north_01"
-                    className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                    placeholder="ej. cam_acceso_norte_01"
+                    className="w-full rounded border border-[#252b3b] bg-[#0e1117] px-3 py-1.5 text-xs font-mono text-slate-100 focus:border-blue-500 focus:outline-none"
                   />
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Lowercase letters, numbers, underscores (2-32 characters).
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Solo minúsculas, dígitos y guion bajo (2 a 32 caracteres).
                   </p>
                 </div>
               )}
 
               <div>
                 <label htmlFor="camera-name" className="block text-xs font-medium text-slate-300 mb-1">
-                  Camera Display Name
+                  Designación del Canal *
                 </label>
                 <input
                   id="camera-name"
@@ -302,44 +327,44 @@ export const CamerasPage: React.FC = () => {
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. North Stand Main"
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  placeholder="ej. Torniquetes Tribuna Norte"
+                  className="w-full rounded border border-[#252b3b] bg-[#0e1117] px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label htmlFor="camera-location" className="block text-xs font-medium text-slate-300 mb-1">
-                  Location (optional)
+                  Sector / Ubicación Física
                 </label>
                 <input
                   id="camera-location"
                   type="text"
                   value={formLocation}
                   onChange={(e) => setFormLocation(e.target.value)}
-                  placeholder="e.g. North Stand, Gate 4"
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  placeholder="ej. Puerta 4 - Nivel Calle"
+                  className="w-full rounded border border-[#252b3b] bg-[#0e1117] px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label htmlFor="camera-type" className="block text-xs font-medium text-slate-300 mb-1">
-                  Source Protocol
+                  Tipo de Entrada
                 </label>
                 <select
                   id="camera-type"
                   value={formSourceType}
                   onChange={(e) => setFormSourceType(e.target.value as CameraSourceType)}
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded border border-[#252b3b] bg-[#0e1117] px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
                 >
-                  <option value="rtsp">RTSP Network Stream</option>
-                  <option value="webcam">Local Webcam Device</option>
-                  <option value="file">Video File Loop</option>
+                  <option value="rtsp">Flujo de Red RTSP / IP</option>
+                  <option value="webcam">Dispositivo USB / Cámara Local</option>
+                  <option value="file">Archivo de Video en Bucle</option>
                 </select>
               </div>
 
               <div>
                 <label htmlFor="camera-url" className="block text-xs font-medium text-slate-300 mb-1">
-                  Source URL
+                  Dirección URI o Índice de Origen
                 </label>
                 <input
                   id="camera-url"
@@ -349,37 +374,30 @@ export const CamerasPage: React.FC = () => {
                   onChange={(e) => setFormSourceUrl(e.target.value)}
                   placeholder={
                     formSourceType === 'rtsp'
-                      ? 'rtsp://127.0.0.1:8554/cam_north_01'
+                      ? 'rtsp://127.0.0.1:8554/cam_norte_01'
                       : formSourceType === 'webcam'
                         ? '0'
-                        : '/path/to/video.mp4'
+                        : '/datos/muestra.mp4'
                   }
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded border border-[#252b3b] bg-[#0e1117] px-3 py-1.5 text-xs font-mono text-slate-100 focus:border-blue-500 focus:outline-none"
                 />
-                <p className="text-[10px] text-slate-500 mt-0.5">
-                  {formSourceType === 'rtsp'
-                    ? 'Must start with rtsp:// or rtsps://'
-                    : formSourceType === 'webcam'
-                      ? 'Numeric device index (e.g. 0 for /dev/video0)'
-                      : 'Absolute or relative path to video'}
-                </p>
               </div>
 
-              <div className="mt-6 flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#1e2330]">
                 <button
                   type="button"
                   onClick={closeModal}
                   disabled={isSubmitting}
-                  className="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  className="rounded border border-[#282e3d] bg-[#161a24] px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="rounded bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-50"
+                  className="rounded bg-blue-600 hover:bg-blue-500 px-4 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : editingCamera ? 'Save Changes' : 'Create Camera'}
+                  {isSubmitting ? 'Guardando...' : editingCamera ? 'Actualizar Canal' : 'Registrar Canal'}
                 </button>
               </div>
             </form>

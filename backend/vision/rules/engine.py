@@ -50,8 +50,30 @@ class RulesEngine:
         self.weapon_history = deque(maxlen=self.config.weapon_n)
         self.cooldowns: dict[tuple[str, object], float] = {}
 
-    def update(self, frame_index, timestamp_s, frame_size, person_tracks, detections) -> list[AlertEvent]:
+    def update(self, frame_index, timestamp_s, frame_size, person_tracks, detections, face_matches=None) -> list[AlertEvent]:
         events = []
+        if face_matches:
+            for match in face_matches:
+                zone = self.zones.zone_of(_center(match.bbox, frame_size))
+                key = ("face_match", match.person_id)
+                if self._available_key(key, timestamp_s):
+                    events.append(
+                        AlertEvent(
+                            "face_match",
+                            frame_index,
+                            timestamp_s,
+                            match.confidence,
+                            match.bbox,
+                            None,
+                            zone.name if zone else None,
+                            {
+                                "banned_person_id": match.person_id,
+                                "name": match.full_name,
+                                "reason": match.reason,
+                                "severity": match.severity,
+                            },
+                        )
+                    )
         seen = set()
         for person in person_tracks:
             if person.track_id is None:

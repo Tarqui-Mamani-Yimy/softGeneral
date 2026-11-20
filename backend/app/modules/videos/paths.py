@@ -19,5 +19,10 @@ def get_contained_file(
     except ValueError:
         raise HTTPException(status_code=404, detail=missing_detail) from None
     if not resolved_path.is_file():
+        parts = Path(candidate_path).parts
+        if len(parts) >= 3 and parts[0] == "alerts" and parts[1] == "live":
+            alt = storage_root / "alerts" / "live" / "alerts" / Path(*parts[2:])
+            if alt.is_file():
+                return alt
         raise HTTPException(status_code=404, detail=missing_detail)
     return resolved_path

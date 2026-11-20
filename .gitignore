@@ -3,6 +3,7 @@
 *.pt
 !modelos/*.pt
 *.onnx
+!modelos/*.onnx
 *.engine
 
 # Runtime data

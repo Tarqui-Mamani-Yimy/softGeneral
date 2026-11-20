@@ -42,12 +42,17 @@ class EvidenceRecorder:
                 self.pending.remove(item)
 
     def start_alert(self, event: AlertEvent, alert_id: UUID, frame: np.ndarray) -> tuple[str | None, str | None]:
-        directory = self.storage_dir / "alerts" / str(self.job_id)
+        if self.storage_dir.name == "live" and self.storage_dir.parent.name == "alerts":
+            directory = self.storage_dir / str(self.job_id)
+            snapshot_relative = f"alerts/live/{self.job_id}/{alert_id}.jpg"
+            clip_relative = f"alerts/live/{self.job_id}/{alert_id}.mp4"
+        else:
+            directory = self.storage_dir / "alerts" / str(self.job_id)
+            snapshot_relative = f"alerts/{self.job_id}/{alert_id}.jpg"
+            clip_relative = f"alerts/{self.job_id}/{alert_id}.mp4"
         directory.mkdir(parents=True, exist_ok=True)
         snapshot_path = directory / f"{alert_id}.jpg"
         clip_path = directory / f"{alert_id}.mp4"
-        snapshot_relative = f"alerts/{self.job_id}/{alert_id}.jpg"
-        clip_relative = f"alerts/{self.job_id}/{alert_id}.mp4"
         snapshot_ok = False
         try:
             highlighted = frame.copy()

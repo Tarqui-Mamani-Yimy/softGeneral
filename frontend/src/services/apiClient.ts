@@ -395,3 +395,75 @@ export async function deleteDemoSession(id: string): Promise<void> {
   }
 }
 
+export async function listBannedPersons(includeInactive = false): Promise<import('../types/bannedPerson').BannedPerson[]> {
+  const query = includeInactive ? '?include_inactive=true' : '';
+  return apiClient<import('../types/bannedPerson').BannedPerson[]>(`/banned-persons${query}`);
+}
+
+export async function createBannedPerson(formData: FormData): Promise<import('../types/bannedPerson').BannedPerson> {
+  const url = `${API_URL}/banned-persons`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 && onUnauthorizedCallback) {
+      setAuthToken(null);
+      onUnauthorizedCallback();
+    }
+    let detail = response.statusText;
+    try {
+      const data = await response.json();
+      if (data && typeof data === 'object' && 'detail' in data) {
+        detail = String((data as { detail: unknown }).detail);
+      }
+    } catch {
+      // response body not JSON
+    }
+    throw new ApiError(response.status, detail);
+  }
+
+  return response.json();
+}
+
+export async function updateBannedPerson(id: string, payload: Partial<import('../types/bannedPerson').BannedPerson>): Promise<import('../types/bannedPerson').BannedPerson> {
+  return apiClient<import('../types/bannedPerson').BannedPerson>(`/banned-persons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteBannedPerson(id: string): Promise<void> {
+  return apiClient<void>(`/banned-persons/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchBannedPersonPhotoBlob(id: string): Promise<Blob> {
+  const url = `${API_URL}/banned-persons/${id}/photo`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    if (response.status === 401 && onUnauthorizedCallback) {
+      setAuthToken(null);
+      onUnauthorizedCallback();
+    }
+    throw new ApiError(response.status, response.statusText);
+  }
+  return response.blob();
+}
+
+

@@ -5,6 +5,7 @@ import {
   getCurrentDemoSession,
   deleteDemoSession,
   getDemoStreamStatus,
+  listAlerts,
   ApiError,
   API_URL,
   getAuthToken,
@@ -22,12 +23,20 @@ const MEDIAMTX_URL = (
 ).replace(/\/+$/, '');
 
 const STATUS_LABELS: Record<DemoStatus, string> = {
-  idle: 'Ready to start',
-  requesting_camera: 'Requesting camera',
-  publishing: 'Publishing',
-  waiting_for_analysis: 'Waiting for analysis',
-  live: 'Live',
-  error: 'Error',
+  idle: 'Canal en espera',
+  requesting_camera: 'Inicializando dispositivo',
+  publishing: 'Publicando flujo WHIP',
+  waiting_for_analysis: 'Sincronizando pipeline IA',
+  live: 'Transmisión Activa',
+  error: 'Fallo de enlace',
+};
+
+const DETECTION_LABELS: Record<string, string> = {
+  person: 'Personas',
+  face_match: 'Sujetos Vetados',
+  weapon: 'Armas',
+  fire_smoke: 'Fuego / Humo',
+  fight: 'Pelea',
 };
 
 export const DemoPage: React.FC = () => {
@@ -52,7 +61,6 @@ export const DemoPage: React.FC = () => {
     activeSessionRef.current = session;
   }, [session]);
 
-  // Check for any currently active demo session on mount
   useEffect(() => {
     let isCancelled = false;
 
@@ -63,7 +71,7 @@ export const DemoPage: React.FC = () => {
           setExistingSession(current);
         }
       } catch {
-        // ignore 404 or transient initial load error
+        // 404 = no hay sesión previa
       } finally {
         if (!isCancelled) {
           setIsCheckingExisting(false);
@@ -82,7 +90,6 @@ export const DemoPage: React.FC = () => {
     };
   }, [canManage]);
 
-  // Check if demo is currently active in any setup or streaming state
   const isDemoActive = status !== 'idle' && status !== 'error';
 
   const [now, setNow] = useState<number>(() => Date.now());
@@ -94,15 +101,43 @@ export const DemoPage: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handleIncomingAlert = useCallback(
-    (alert: Alert) => {
-      const activeId = activeSessionRef.current?.id;
-      if (activeId && alert.camera_id === activeId) {
-        setAlerts((prev) => [alert, ...prev.filter((a) => a.id !== alert.id)].slice(0, 50));
+  const handleIncomingAlert = useCallback((alert: Alert) => {
+    const activeId = activeSessionRef.current?.id;
+    if (activeId && (!alert.camera_id || alert.camera_id.toLowerCase() === activeId.toLowerCase())) {
+      setAlerts((prev) => [alert, ...prev.filter((a) => a.id !== alert.id)].slice(0, 50));
+    }
+  }, []);
+
+  // Sincronizar periódicamente las alertas del canal activo
+  useEffect(() => {
+    if (!session?.id) return;
+    const fetchSessionAlerts = async () => {
+      try {
+        const data = await listAlerts({ limit: 50 });
+        const sessionAlerts = data.filter(
+          (a) => a.camera_id && a.camera_id.toLowerCase() === session.id.toLowerCase()
+        );
+        if (sessionAlerts.length > 0) {
+          setAlerts((prev) => {
+            const merged = [...prev];
+            sessionAlerts.forEach((item) => {
+              if (!merged.some((m) => m.id === item.id)) {
+                merged.push(item);
+              }
+            });
+            merged.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+            return merged.slice(0, 50);
+          });
+        }
+      } catch {
+        // ignorar fallo de sondeo
       }
-    },
-    []
-  );
+    };
+
+    fetchSessionAlerts();
+    const interval = setInterval(fetchSessionAlerts, 3000);
+    return () => clearInterval(interval);
+  }, [session?.id]);
 
   const { metricsByCamera } = useAlertStream({
     enabled: isDemoActive && !!session,
@@ -114,7 +149,6 @@ export const DemoPage: React.FC = () => {
     ? Math.max(0, Math.floor((now - new Date(currentMetrics.updated_at).getTime()) / 1000))
     : 0;
 
-  // Clean up all resources when stopping demo
   const cleanupAll = useCallback(async (deleteRemoteSession = true) => {
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
@@ -125,7 +159,7 @@ export const DemoPage: React.FC = () => {
       try {
         await whipConnRef.current.stop();
       } catch {
-        // ignore
+        // ignorar
       }
       whipConnRef.current = null;
     }
@@ -135,7 +169,7 @@ export const DemoPage: React.FC = () => {
         try {
           track.stop();
         } catch {
-          // ignore
+          // ignorar
         }
       });
       streamRef.current = null;
@@ -150,7 +184,7 @@ export const DemoPage: React.FC = () => {
       try {
         await deleteDemoSession(currentSession.id);
       } catch {
-        // best effort
+        // mejor esfuerzo
       }
     }
 
@@ -159,7 +193,6 @@ export const DemoPage: React.FC = () => {
     setStatus('idle');
   }, []);
 
-  // Handle pagehide best effort cleanup
   useEffect(() => {
     const handlePageHide = () => {
       const whipResource = whipConnRef.current?.whipResourceUrl ?? null;
@@ -174,7 +207,7 @@ export const DemoPage: React.FC = () => {
         try {
           whipConnRef.current.pc.close();
         } catch {
-          // ignore
+          // ignorar
         }
       }
     };
@@ -185,7 +218,6 @@ export const DemoPage: React.FC = () => {
     };
   }, []);
 
-  // Cleanup on component unmount
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) {
@@ -204,41 +236,33 @@ export const DemoPage: React.FC = () => {
     };
   }, []);
 
-  // Poll for the annotated output stream in MediaMTX once publishing
-  const waitForAnnotatedStream = useCallback(
-    (sessionId: string) => {
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-      }
+  const waitForAnnotatedStream = useCallback((sessionId: string) => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+    }
 
-      // The backend asks the MediaMTX control API; poll until the annotated
-      // stream is really being published. The first frame can take a while
-      // (camera keyframe + model loading), so keep polling while the session lives.
-      pollTimerRef.current = setTimeout(async () => {
-        if (activeSessionRef.current?.id !== sessionId) {
+    pollTimerRef.current = setTimeout(async () => {
+      if (activeSessionRef.current?.id !== sessionId) {
+        return;
+      }
+      try {
+        const { annotated_ready } = await getDemoStreamStatus(sessionId);
+        if (annotated_ready) {
+          setStatus('live');
           return;
         }
-        try {
-          const { annotated_ready } = await getDemoStreamStatus(sessionId);
-          if (annotated_ready) {
-            setStatus('live');
-            return;
-          }
-        } catch {
-          // transient API error: keep polling
-        }
-        waitForAnnotatedStream(sessionId);
-      }, 1500);
-    },
-    []
-  );
+      } catch {
+        // continuar sondeo
+      }
+      waitForAnnotatedStream(sessionId);
+    }, 1500);
+  }, []);
 
   const startDemo = async (resumeExisting?: DemoSession) => {
     setErrorMessage(null);
     setAlerts([]);
     setStatus('requesting_camera');
 
-    // 1. Request camera access
     if (
       typeof navigator === 'undefined' ||
       !navigator.mediaDevices ||
@@ -246,7 +270,7 @@ export const DemoPage: React.FC = () => {
     ) {
       setStatus('error');
       setErrorMessage(
-        'Webcam access is not supported by your browser or the page is not in a secure context (HTTPS or http://localhost).'
+        'El dispositivo de captura no está disponible o el navegador no opera bajo un contexto seguro (HTTPS / localhost).'
       );
       return;
     }
@@ -269,24 +293,17 @@ export const DemoPage: React.FC = () => {
       setStatus('error');
       const errorObj = err as { name?: string };
       if (errorObj?.name === 'NotAllowedError' || errorObj?.name === 'PermissionDeniedError') {
-        setErrorMessage(
-          'Webcam permission was denied. Please grant camera access in your browser address bar settings and retry.'
-        );
+        setErrorMessage('Permiso de cámara denegado por el usuario.');
       } else if (errorObj?.name === 'NotFoundError' || errorObj?.name === 'DevicesNotFoundError') {
-        setErrorMessage(
-          'No camera device was found on your computer. Please connect a webcam and retry.'
-        );
+        setErrorMessage('No se detectó ningún dispositivo de captura de video conectado.');
       } else if (errorObj?.name === 'NotReadableError' || errorObj?.name === 'TrackStartError') {
-        setErrorMessage(
-          'Your webcam is already in use by another application. Please close other camera programs and retry.'
-        );
+        setErrorMessage('El dispositivo de video se encuentra ocupado por otro proceso.');
       } else {
-        setErrorMessage('Failed to access local webcam. Please check your camera permissions.');
+        setErrorMessage('No fue posible inicializar la captura de video local.');
       }
       return;
     }
 
-    // 2. Initialize or reuse demo session
     let activeSess: DemoSession;
     try {
       if (resumeExisting) {
@@ -300,12 +317,11 @@ export const DemoPage: React.FC = () => {
       stream.getTracks().forEach((t) => t.stop());
       setStatus('error');
       setErrorMessage(
-        err instanceof ApiError ? `Session API error: ${err.detail}` : 'Failed to create demo session with the server.'
+        err instanceof ApiError ? `Error del servidor: ${err.detail}` : 'Error al inicializar el canal en el servidor.'
       );
       return;
     }
 
-    // 3. Publish over WHIP
     setStatus('publishing');
     try {
       const connection = await startWhipPublish(stream, activeSess.whip_url);
@@ -313,14 +329,12 @@ export const DemoPage: React.FC = () => {
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
       setStatus('error');
-      const msg = err instanceof Error ? err.message : 'MediaMTX WHIP endpoint is unreachable.';
+      const msg = err instanceof Error ? err.message : 'Servidor de medios MediaMTX (WHIP) inalcanzable.';
       setErrorMessage(msg);
-      // Clean up session if WHIP publish fails
       deleteDemoSession(activeSess.id).catch(() => {});
       return;
     }
 
-    // 4. Waiting for vision analysis
     setStatus('waiting_for_analysis');
     waitForAnnotatedStream(activeSess.id);
   };
@@ -343,7 +357,7 @@ export const DemoPage: React.FC = () => {
       setStatus('idle');
     } catch (err) {
       setErrorMessage(
-        err instanceof ApiError ? err.detail : 'Failed to terminate existing session.'
+        err instanceof ApiError ? err.detail : 'Error al cerrar la sesión activa.'
       );
     } finally {
       setIsStopping(false);
@@ -352,14 +366,8 @@ export const DemoPage: React.FC = () => {
 
   if (!canManage) {
     return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Try demo</h2>
-          <p className="text-sm text-slate-400">Webcam live security surveillance demonstration.</p>
-        </div>
-        <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6 text-center text-sm text-red-400">
-          Access restricted. You require the <code className="font-mono text-red-300">cameras.manage</code> permission to run the webcam demo.
-        </div>
+      <div className="rounded-md border border-red-500/30 bg-red-950/30 p-6 text-center text-xs text-red-300">
+        Acceso restringido. Se requiere el privilegio <code className="font-mono">cameras.manage</code> para operar el canal de prueba.
       </div>
     );
   }
@@ -376,165 +384,163 @@ export const DemoPage: React.FC = () => {
     return 'pending';
   };
 
-  const renderStepDotClass = (state: 'pending' | 'active' | 'completed') => {
-    if (state === 'active') return 'bg-amber-400 animate-pulse';
-    if (state === 'completed') return 'bg-emerald-400';
-    return 'bg-slate-600';
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight text-white">Try demo</h2>
-            {status !== 'idle' && status !== 'error' && (
-              <span
-                aria-live="polite"
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                  status === 'live'
-                    ? 'border-emerald-800 bg-emerald-950/80 text-emerald-300'
-                    : 'border-amber-800 bg-amber-950/80 text-amber-300'
-                }`}
-              >
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    status === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'
-                  }`}
-                />
-                {STATUS_LABELS[status]}
-              </span>
-            )}
+    <div className="space-y-5">
+      {/* Barra de Control de Canal */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#1e2330] pb-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded border border-[#222836] bg-[#12151c] px-3 py-1.5 flex items-center gap-2 text-xs">
+            <span className="text-slate-400">ID DE CANAL:</span>
+            <span className="font-mono font-semibold text-white">
+              {session ? session.camera_code.toUpperCase() : 'SIN ASIGNAR'}
+            </span>
           </div>
-          <p className="text-sm text-slate-400 mt-0.5">
-            Stream your computer's webcam to the softGeneral AI vision engine and observe real-time detections and live alerts.
-          </p>
+
+          <div
+            aria-live="polite"
+            className={`inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-mono ${
+              status === 'live'
+                ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-300'
+                : isDemoActive
+                  ? 'border-amber-800/60 bg-amber-950/40 text-amber-300'
+                  : 'border-[#222836] bg-[#12151c] text-slate-400'
+            }`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                status === 'live'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : isDemoActive
+                    ? 'bg-amber-400 animate-ping'
+                    : 'bg-slate-600'
+              }`}
+            />
+            <span>ESTADO: {STATUS_LABELS[status].toUpperCase()}</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {isDemoActive ? (
             <button
               type="button"
               onClick={stopDemo}
               disabled={isStopping}
-              className="rounded bg-rose-600 hover:bg-rose-500 px-4 py-2 text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded bg-red-600 hover:bg-red-500 px-4 py-2 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
             >
-              {isStopping ? 'Stopping Demo...' : 'Stop Demo'}
+              <span className="h-2 w-2 rounded-xs bg-white" />
+              {isStopping ? 'Cerrando Canal...' : 'Detener Transmisión'}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => startDemo()}
               disabled={isCheckingExisting || isStopping}
-              className="rounded bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded bg-blue-600 hover:bg-blue-500 px-4 py-2 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
             >
-              Start Demo
+              <span className="h-2 w-2 rounded-full bg-white" />
+              Iniciar Transmisión de Prueba
             </button>
           )}
         </div>
       </div>
 
-      {/* Security notice regarding browser media capture requirements */}
-      <div className="rounded-md border border-slate-800 bg-slate-950/80 px-4 py-2.5 text-xs text-slate-400 flex items-center gap-2">
-        <span className="font-semibold text-slate-300">Browser Security Requirement:</span>
-        <span>
-          Browsers only allow webcam capture in secure contexts (<code className="font-mono text-emerald-400">https://</code> or <code className="font-mono text-emerald-400">http://localhost</code>).
-        </span>
-      </div>
-
-      {/* Error notification */}
       {errorMessage && (
-        <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-400">
-          <p className="font-semibold mb-1">Demo Error</p>
-          <p>{errorMessage}</p>
+        <div role="alert" className="rounded border border-red-500/30 bg-red-950/30 p-3.5 text-xs text-red-300">
+          <p className="font-semibold">Fallo en el Canal de Prueba</p>
+          <p className="mt-0.5 text-red-200/80">{errorMessage}</p>
         </div>
       )}
 
-      {/* Existing Session Prompt */}
+      {/* Aviso de sesión previa */}
       {existingSession && !isDemoActive && (
         <section
-          aria-label="Active session detected"
-          className="rounded-lg border border-amber-600/30 bg-amber-950/20 p-5 space-y-3"
+          aria-label="Sesión activa detectada"
+          className="rounded-md border border-amber-700/50 bg-amber-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-amber-300">Active Demo Session Detected</h3>
-              <p className="text-xs text-slate-300 mt-1">
-                A demo camera session is currently open (<span className="font-mono text-amber-200">{existingSession.camera_code}</span>).
-                You can resume streaming your webcam to this session or terminate it to start fresh.
-              </p>
-            </div>
+          <div className="text-xs">
+            <h3 className="font-semibold text-amber-300">Sesión de Canal Previa Detectada</h3>
+            <p className="text-slate-300 mt-0.5">
+              El canal <span className="font-mono text-amber-200">{existingSession.camera_code}</span> continúa abierto en el servidor.
+            </p>
           </div>
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => startDemo(existingSession)}
-              className="rounded bg-emerald-600 hover:bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer"
+              className="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer"
             >
-              Resume Demo
+              Reconectar Canal
             </button>
             <button
               type="button"
               onClick={endExistingSession}
               disabled={isStopping}
-              className="rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="rounded border border-[#282e3d] bg-[#161a24] hover:bg-[#1e2433] px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
             >
-              {isStopping ? 'Ending...' : 'End Session'}
+              {isStopping ? 'Cerrando...' : 'Descartar Sesión'}
             </button>
           </div>
         </section>
       )}
 
-      {/* Progress / Status Steps indicator during setup */}
+      {/* Barra de progreso de enlace */}
       {isDemoActive && status !== 'live' && (
-        <section aria-label="Demo progress" className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${renderStepDotClass(getStepState('requesting_camera'))}`} />
-              <span className={getStepState('requesting_camera') === 'active' ? 'font-bold text-amber-300' : getStepState('requesting_camera') === 'completed' ? 'text-slate-300' : 'text-slate-500'}>
-                1. Requesting camera
-              </span>
-            </div>
-            <span className="hidden sm:inline text-slate-600">→</span>
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${renderStepDotClass(getStepState('publishing'))}`} />
-              <span className={getStepState('publishing') === 'active' ? 'font-bold text-amber-300' : getStepState('publishing') === 'completed' ? 'text-slate-300' : 'text-slate-500'}>
-                2. Publishing
-              </span>
-            </div>
-            <span className="hidden sm:inline text-slate-600">→</span>
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${renderStepDotClass(getStepState('waiting_for_analysis'))}`} />
-              <span className={getStepState('waiting_for_analysis') === 'active' ? 'font-bold text-amber-300' : getStepState('waiting_for_analysis') === 'completed' ? 'text-slate-300' : 'text-slate-500'}>
-                3. Waiting for analysis
-              </span>
-            </div>
-            <span className="hidden sm:inline text-slate-600">→</span>
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${renderStepDotClass(getStepState('live'))}`} />
-              <span className={getStepState('live') === 'active' ? 'font-bold text-emerald-300' : 'text-slate-500'}>
-                4. Live
-              </span>
-            </div>
+        <section aria-label="Progreso de conexión" className="rounded-md border border-[#1e2330] bg-[#12151c] px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+            {[
+              { key: 'requesting_camera' as const, label: '01. CAPTURA LOCAL' },
+              { key: 'publishing' as const, label: '02. ENLACE WHIP' },
+              { key: 'waiting_for_analysis' as const, label: '03. PIPELINE IA' },
+              { key: 'live' as const, label: '04. SEÑAL EN VIVO' },
+            ].map((step) => {
+              const st = getStepState(step.key);
+              return (
+                <div key={step.key} className="flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      st === 'active'
+                        ? 'bg-amber-400 animate-pulse'
+                        : st === 'completed'
+                          ? 'bg-emerald-400'
+                          : 'bg-slate-700'
+                    }`}
+                  />
+                  <span
+                    className={
+                      st === 'active'
+                        ? 'text-amber-300 font-semibold'
+                        : st === 'completed'
+                          ? 'text-emerald-400'
+                          : 'text-slate-600'
+                    }
+                  >
+                    {step.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* Grid: Local Preview + Annotated Stream + Live Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Local Preview & Annotated View */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Local Preview */}
-            <section aria-labelledby="local-preview-title" className="rounded-lg border border-slate-800 bg-slate-950 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 id="local-preview-title" className="text-sm font-semibold text-slate-200">
-                  Local Webcam Preview
+      {/* Matriz Principal: Monitores Duales + Bitácora de Eventos */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Columna Izquierda: Monitores y Telemetría */}
+        <div className="lg:col-span-8 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Monitor 01: Señal de Entrada */}
+            <section
+              aria-labelledby="local-preview-title"
+              className="rounded-md border border-[#1e2330] bg-[#12151c] overflow-hidden"
+            >
+              <div className="border-b border-[#1e2330] bg-[#161a23] px-3.5 py-2 flex items-center justify-between">
+                <h3 id="local-preview-title" className="font-mono text-xs font-semibold text-slate-200">
+                  CH-01 // SEÑAL DE ORIGEN
                 </h3>
-                <span className="text-[11px] text-slate-400">Browser capture</span>
+                <span className="font-mono text-[10px] text-slate-400">WEBRTC IN</span>
               </div>
-              <div className="relative aspect-video w-full overflow-hidden rounded-md border border-slate-800 bg-black flex items-center justify-center">
+
+              <div className="relative aspect-video w-full bg-black flex items-center justify-center">
                 <video
                   ref={localVideoRef}
                   muted
@@ -543,133 +549,129 @@ export const DemoPage: React.FC = () => {
                   className="h-full w-full object-cover"
                 />
                 {!isDemoActive && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 p-4 text-center">
-                    <p className="text-xs text-slate-400 mb-2">Camera inactive</p>
-                    <p className="text-[11px] text-slate-500">
-                      Click "Start Demo" above to request camera permission and start streaming.
-                    </p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0b0d11]/90 p-4 text-center">
+                    <span className="font-mono text-xs text-slate-500">SIN SEÑAL DE ENTRADA</span>
+                    <span className="text-[11px] text-slate-600 mt-1">
+                      Inicie la transmisión para habilitar el dispositivo local
+                    </span>
                   </div>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500">
-                Direct local feed captured via <code className="text-slate-400">getUserMedia</code> and encoded to H.264.
-              </p>
+
+              <div className="border-t border-[#1e2330] bg-[#0e1117] px-3.5 py-2 flex items-center justify-between font-mono text-[10px] text-slate-500">
+                <span>CODEC: H.264 / VP8</span>
+                <span>ORIGEN: DISPOSITIVO LOCAL</span>
+              </div>
             </section>
 
-            {/* Annotated Live View */}
-            <section aria-labelledby="annotated-view-title" className="rounded-lg border border-slate-800 bg-slate-950 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 id="annotated-view-title" className="text-sm font-semibold text-slate-200">
-                  Annotated Live Stream
+            {/* Monitor 02: Señal Procesada por IA */}
+            <section
+              aria-labelledby="annotated-view-title"
+              className="rounded-md border border-[#1e2330] bg-[#12151c] overflow-hidden"
+            >
+              <div className="border-b border-[#1e2330] bg-[#161a23] px-3.5 py-2 flex items-center justify-between">
+                <h3 id="annotated-view-title" className="font-mono text-xs font-semibold text-slate-200">
+                  CH-02 // SALIDA ANALÍTICA IA
                 </h3>
                 {status === 'live' ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Realtime
+                    REC • EN VIVO
                   </span>
                 ) : (
-                  <span className="text-[11px] text-slate-500">AI pipeline output</span>
+                  <span className="font-mono text-[10px] text-slate-500">OSD OVERLAY</span>
                 )}
               </div>
-              <div className="relative aspect-video w-full overflow-hidden rounded-md border border-slate-800 bg-black flex items-center justify-center">
+
+              <div className="relative aspect-video w-full bg-black flex items-center justify-center">
                 {isDemoActive && session ? (
                   <iframe
                     src={livePlayerUrl}
-                    title="Annotated live vision stream"
+                    title="Flujo analítico con anotaciones"
                     allow="autoplay"
                     className="h-full w-full border-0"
                   />
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 p-4 text-center">
-                    <p className="text-xs text-slate-400 mb-1">No stream active</p>
-                    <p className="text-[11px] text-slate-500">
-                      Vision annotations will display here once the demo session starts.
-                    </p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0b0d11]/90 p-4 text-center">
+                    <span className="font-mono text-xs text-slate-500">CANAL ANALÍTICO INACTIVO</span>
+                    <span className="text-[11px] text-slate-600 mt-1">
+                      Esperando vinculación con el supervisor de visión
+                    </span>
                   </div>
                 )}
+
                 {status === 'waiting_for_analysis' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-xs p-4 text-center">
-                    <span className="h-4 w-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin mb-2" />
-                    <p className="text-xs font-semibold text-white">Waiting for analysis...</p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-4 text-center">
+                    <span className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin mb-2" />
+                    <p className="font-mono text-xs text-white">INICIALIZANDO PIPELINE NEURONAL...</p>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Connecting live vision worker to output stream.
+                      Cargando detectores YOLOv8 y padrón biométrico SFace
                     </p>
                   </div>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500">
-                Low-latency WebRTC output rendered from MediaMTX path <span className="font-mono text-emerald-400">{session?.live_path ?? 'demo_*'}</span>.
-              </p>
-              <div className="rounded border border-emerald-900/40 bg-emerald-950/30 p-2.5 text-xs text-emerald-300">
-                To trigger an intrusion alert: step out of the frame to the left or right, then walk back into the center and stay a few seconds.
+
+              <div className="border-t border-[#1e2330] bg-[#0e1117] px-3.5 py-2 flex items-center justify-between font-mono text-[10px] text-slate-500">
+                <span>RUTA: {session?.live_path ?? '—'}</span>
+                <span>DETECCIÓN + BIOMETRÍA</span>
               </div>
             </section>
           </div>
 
-          {/* Live Statistics Panel */}
+          {/* Telemetría del Procesador de Visión */}
           <section
             aria-labelledby="live-stats-title"
             aria-live="polite"
-            className="rounded-lg border border-slate-800 bg-slate-950 p-4 space-y-4"
+            className="rounded-md border border-[#1e2330] bg-[#12151c] overflow-hidden"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="border-b border-[#1e2330] bg-[#161a23] px-4 py-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 id="live-stats-title" className="text-sm font-semibold text-slate-200">
-                  Live statistics
+                <h3 id="live-stats-title" className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Telemetría de Procesamiento en Tiempo Real
                 </h3>
                 {currentMetrics && secondsAgo <= 10 && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Active
-                  </span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 )}
               </div>
-              <div className="text-[11px] text-slate-400 font-mono">
+              <div className="font-mono text-[11px] text-slate-400">
                 {!currentMetrics ? (
-                  <span className="text-slate-500 italic">No data yet</span>
+                  <span className="text-slate-500">SIN TELEMETRÍA</span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span>updated {secondsAgo}s ago</span>
-                    {secondsAgo > 10 && (
-                      <span className="rounded bg-amber-950/80 border border-amber-800 px-1.5 py-0.2 text-[10px] font-semibold text-amber-300">
-                        stale
-                      </span>
-                    )}
-                  </span>
+                  <span>SINCRONIZADO HACE {secondsAgo}S</span>
                 )}
               </div>
             </div>
 
             {!currentMetrics ? (
-              <div className="py-4 text-center text-xs text-slate-500">
+              <div className="p-6 text-center text-xs text-slate-500">
                 {isDemoActive
-                  ? 'Awaiting telemetry metrics from live vision worker...'
-                  : 'No data yet. Start the demo to stream real-time analysis statistics.'}
+                  ? 'Recibiendo primeros paquetes de telemetría del trabajador en vivo...'
+                  : 'Inicie el canal de prueba para visualizar métricas de rendimiento e inferencia.'}
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="p-4 space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
-                    <span className="block text-[11px] font-medium text-slate-400">Analysis FPS</span>
-                    <span className="text-lg font-bold font-mono text-emerald-400">
+                  <div className="rounded border border-[#222836] bg-[#0e1117] p-3">
+                    <span className="block text-[10px] font-mono uppercase text-slate-500">FPS Inferencia IA</span>
+                    <span className="mt-1 block text-lg font-bold font-mono text-emerald-400 tabular-nums">
                       {currentMetrics.analysis_fps.toFixed(1)}
                     </span>
                   </div>
-                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
-                    <span className="block text-[11px] font-medium text-slate-400">Video FPS</span>
-                    <span className="text-lg font-bold font-mono text-slate-100">
+                  <div className="rounded border border-[#222836] bg-[#0e1117] p-3">
+                    <span className="block text-[10px] font-mono uppercase text-slate-500">FPS Codificación</span>
+                    <span className="mt-1 block text-lg font-bold font-mono text-white tabular-nums">
                       {currentMetrics.published_fps.toFixed(1)}
                     </span>
                   </div>
-                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
-                    <span className="block text-[11px] font-medium text-slate-400">People tracked</span>
-                    <span className="text-lg font-bold font-mono text-sky-400">
+                  <div className="rounded border border-[#222836] bg-[#0e1117] p-3">
+                    <span className="block text-[10px] font-mono uppercase text-slate-500">Pistas Activas</span>
+                    <span className="mt-1 block text-lg font-bold font-mono text-blue-400 tabular-nums">
                       {currentMetrics.people_tracked}
                     </span>
                   </div>
-                  <div className="rounded border border-slate-800/80 bg-slate-900/60 p-3">
-                    <span className="block text-[11px] font-medium text-slate-400">Last alert latency</span>
-                    <span className="text-lg font-bold font-mono text-amber-300">
+                  <div className="rounded border border-[#222836] bg-[#0e1117] p-3">
+                    <span className="block text-[10px] font-mono uppercase text-slate-500">Latencia Alerta</span>
+                    <span className="mt-1 block text-lg font-bold font-mono text-amber-300 tabular-nums">
                       {currentMetrics.frame_to_alert_ms !== null && currentMetrics.frame_to_alert_ms !== undefined
                         ? `${Math.round(currentMetrics.frame_to_alert_ms)} ms`
                         : '—'}
@@ -677,85 +679,96 @@ export const DemoPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-1.5 pt-1">
-                  <span className="block text-[11px] font-medium text-slate-400">Detections by type:</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {Object.entries(currentMetrics.detections).length === 0 ? (
-                      <span className="text-xs text-slate-500 italic">No detections in current frame</span>
-                    ) : (
-                      Object.entries(currentMetrics.detections).map(([label, count]) => (
-                        <span
-                          key={label}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-xs text-slate-200"
-                        >
-                          <span className="font-semibold text-emerald-400 capitalize">{label}:</span>
-                          <span className="font-mono">{count}</span>
-                        </span>
-                      ))
-                    )}
-                  </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#1a1f2b]">
+                  <span className="text-[11px] font-mono text-slate-500">OBJETOS EN CUADRO:</span>
+                  {Object.entries(currentMetrics.detections).length === 0 ? (
+                    <span className="text-xs text-slate-500">Ninguno</span>
+                  ) : (
+                    Object.entries(currentMetrics.detections).map(([label, count]) => (
+                      <span
+                        key={label}
+                        className="inline-flex items-center gap-1.5 rounded border border-[#282e3d] bg-[#161a24] px-2.5 py-0.5 text-xs font-mono text-slate-200"
+                      >
+                        <span className="text-blue-400">{DETECTION_LABELS[label] ?? label}:</span>
+                        <span className="font-bold">{count}</span>
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             )}
           </section>
         </div>
 
-        {/* Right Column: Live Alerts Panel */}
+        {/* Columna Derecha: Bitácora de Alertas de la Sesión */}
         <div className="lg:col-span-4">
-          <section aria-labelledby="live-alerts-title" className="rounded-lg border border-slate-800 bg-slate-950 p-4 space-y-3 flex flex-col h-full min-h-[360px]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <section
+            aria-labelledby="live-alerts-title"
+            className="rounded-md border border-[#1e2330] bg-[#12151c] flex flex-col h-full min-h-[420px] overflow-hidden"
+          >
+            <div className="border-b border-[#1e2330] bg-[#161a23] px-4 py-2.5 flex items-center justify-between">
               <div>
-                <h3 id="live-alerts-title" className="text-sm font-semibold text-slate-200">
-                  Demo Security Alerts
+                <h3 id="live-alerts-title" className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Eventos de la Sesión
                 </h3>
-                <p className="text-[11px] text-slate-400">
-                  Real-time events from this camera session
-                </p>
               </div>
-              <span className="rounded bg-slate-900 px-2 py-0.5 text-xs font-mono text-slate-300">
+              <span className="rounded bg-[#0e1117] border border-[#252b3b] px-2 py-0.5 text-[11px] font-mono text-slate-300">
                 {alerts.length}
               </span>
             </div>
 
             {alerts.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 space-y-2">
-                <span className="h-2 w-2 rounded-full bg-slate-600" />
-                <p>
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 space-y-1.5">
+                <p className="font-mono text-[11px]">SIN INCIDENTES REGISTRADOS</p>
+                <p className="text-[11px] text-slate-600">
                   {status === 'live'
-                    ? 'No incidents detected yet. Move or test scenarios in front of your webcam.'
-                    : 'Waiting for stream to begin...'}
+                    ? 'Las detecciones de personas vetadas, intrusiones o armas aparecerán aquí en tiempo real.'
+                    : 'Inicie el canal para monitorear eventos.'}
                 </p>
               </div>
             ) : (
-              <ul className="space-y-2.5 overflow-y-auto max-h-[500px] pr-1">
-                {alerts.map((alert) => (
-                  <li
-                    key={alert.id}
-                    className="rounded-md border border-slate-800 bg-slate-900/70 p-3 space-y-1.5 transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center rounded bg-amber-900/40 text-amber-300 border border-amber-700/50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider">
-                        {alert.alert_type.replace('_', ' ')}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {new Date(alert.occurred_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-slate-300 pt-1">
-                      <span>Confidence:</span>
-                      <strong className="text-emerald-400 font-mono">
-                        {(alert.confidence * 100).toFixed(0)}%
-                      </strong>
-                    </div>
-                    {typeof alert.details?.zone === 'string' && (
-                      <div className="text-xs text-slate-400">
-                        {typeof alert.details?.origin_zone === 'string'
-                          ? `${alert.details.origin_zone} → ${alert.details.zone}`
-                          : `Zone: ${alert.details.zone}`}
+              <ul className="divide-y divide-[#1a1f2b] overflow-y-auto max-h-[540px]">
+                {alerts.map((alert) => {
+                  const isFaceMatch = alert.alert_type === 'face_match';
+                  return (
+                    <li
+                      key={alert.id}
+                      className={`p-3.5 space-y-1.5 border-l-2 ${
+                        isFaceMatch
+                          ? 'border-l-red-500 bg-red-950/15'
+                          : 'border-l-amber-500 bg-[#141821]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                            isFaceMatch
+                              ? 'border-red-700/70 bg-red-950/80 text-red-200'
+                              : 'border-amber-700/60 bg-amber-950/60 text-amber-200'
+                          }`}
+                        >
+                          {isFaceMatch ? 'PERSONA VETADA' : alert.alert_type.replace('_', ' ')}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {new Date(alert.occurred_at).toLocaleTimeString('es-BO', { hour12: false })}
+                        </span>
                       </div>
-                    )}
-                  </li>
-                ))}
+
+                      {isFaceMatch && Boolean(alert.details?.full_name) && (
+                        <div className="text-xs font-bold text-white">
+                          Sujeto: {String(alert.details?.full_name)}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>CONFIANZA:</span>
+                        <strong className="text-emerald-400">
+                          {(alert.confidence * 100).toFixed(1)}%
+                        </strong>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -764,4 +777,5 @@ export const DemoPage: React.FC = () => {
     </div>
   );
 };
+
 export default DemoPage;

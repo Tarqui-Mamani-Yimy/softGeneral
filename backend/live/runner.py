@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -10,11 +11,13 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from sqlalchemy import text
 from app.modules.demo.repository import DEMO_CODE_PREFIX
 from live.repository import LiveAlertRepository
 from live.stats import DbStatsPublisher
 from vision.annotation.draw import draw_detections
 from vision.evidence.recorder import EvidenceRecorder
+from vision.face.recognizer import FaceRecognitionEngine
 from vision.rules.config import RuleConfig, load_rules_config
 from vision.rules.engine import RulesEngine
 from vision.rules.zones import ZoneMap
@@ -30,18 +33,23 @@ class LiveSummary:
 
 
 class _LatestAnalyzer:
-    def __init__(self, analyzers, rules, stride, frame_size):
+    def __init__(self, analyzers, rules, stride, frame_size, session_factory=None):
         self.analyzers = analyzers
         self.rules = rules
         self.stride = stride
         self.frame_size = frame_size
+        self.session_factory = session_factory
         self.condition = threading.Condition()
         self.latest = None
         self.results = []
+        self.face_matches = []
         self.events = deque()
         self.stop = False
         self.submitted = 0
         self.analyzed = 0
+        self._face_engine: FaceRecognitionEngine | None = None
+        self._candidates: list[dict] = []
+        self._last_candidates_load = 0.0
         self.thread = threading.Thread(target=self._run, name="live-analysis", daemon=True)
 
     def start(self): self.thread.start()
@@ -57,7 +65,7 @@ class _LatestAnalyzer:
         with self.condition:
             events = list(self.events)
             self.events.clear()
-            return self.results.copy(), events
+            return self.results.copy(), events, self.face_matches.copy()
 
     def close(self):
         with self.condition:
@@ -65,7 +73,36 @@ class _LatestAnalyzer:
             self.condition.notify_all()
         self.thread.join(timeout=2)
 
+    def _load_candidates(self):
+        now = time.time()
+        if self.session_factory and (now - self._last_candidates_load > 6.0 or not self._candidates):
+            try:
+                session_ctx = self.session_factory()
+                if session_ctx:
+                    with session_ctx as session:
+                        rows = session.execute(
+                            text("SELECT id, full_name, reason, severity, face_encoding FROM banned_persons WHERE is_active = TRUE")
+                        ).mappings().all()
+                        self._candidates = [
+                            {
+                                "id": str(r["id"]),
+                                "full_name": r["full_name"],
+                                "reason": r["reason"],
+                                "severity": r["severity"],
+                                "face_encoding": r["face_encoding"] if isinstance(r["face_encoding"], list) else json.loads(r["face_encoding"]),
+                            }
+                            for r in rows
+                        ]
+                        self._last_candidates_load = now
+            except Exception as exc:
+                logger.debug("Failed to query banned persons: %s", exc)
+
     def _run(self):
+        try:
+            self._face_engine = FaceRecognitionEngine()
+        except Exception as e:
+            logger.debug("Face recognition engine not available: %s", e)
+
         while True:
             with self.condition:
                 while self.latest is None and not self.stop:
@@ -78,10 +115,27 @@ class _LatestAnalyzer:
             detections = []
             for analyzer in self.analyzers:
                 detections.extend(analyzer.analyze(frame))
-            annotated = draw_detections(frame.copy(), detections)
-            events = self.rules.update(self.analyzed, timestamp_s, self.frame_size, [d for d in detections if d.label == "person"], [d for d in detections if d.label != "person"])
+
+            face_matches = []
+            self._load_candidates()
+            if self._face_engine and self._candidates:
+                try:
+                    face_matches = self._face_engine.find_matches(frame, self._candidates)
+                except Exception as exc:
+                    logger.debug("Face match error: %s", exc)
+
+            annotated = draw_detections(frame.copy(), detections, face_matches=face_matches)
+            events = self.rules.update(
+                self.analyzed,
+                timestamp_s,
+                self.frame_size,
+                [d for d in detections if d.label == "person"],
+                [d for d in detections if d.label != "person"],
+                face_matches=face_matches,
+            )
             with self.condition:
                 self.results = detections
+                self.face_matches = face_matches
                 self.events.extend((event, annotated, capture_timestamp) for event in events)
                 self.analyzed += 1
 
@@ -118,9 +172,10 @@ class LiveCameraRunner:
             publisher = self.publisher_factory(self.camera.code, fps, frame_size)
             with publisher:
                 evidence = self.evidence_factory(Path(self.settings.storage_dir) / "alerts" / "live", self.camera.code, fps, frame_size, getattr(self.settings, "worker_clip_before_seconds", 3), getattr(self.settings, "worker_clip_after_seconds", 3))
-                analysis = _LatestAnalyzer(self.analyzer_factory(), self.rules_factory(), getattr(self.settings, "live_analysis_stride", 3), frame_size)
+                analysis = _LatestAnalyzer(self.analyzer_factory(), self.rules_factory(), getattr(self.settings, "live_analysis_stride", 3), frame_size, session_factory=self.session_factory)
                 analysis.start()
                 last_detections = []
+                last_face_matches = []
                 published_frames = 0
                 metrics_started = perf_counter()
                 last_metrics = metrics_started
@@ -145,8 +200,8 @@ class LiveCameraRunner:
                         capture_timestamp = getattr(source, "capture_timestamp", time.time())
                         timestamp = max(0.0, perf_counter() - started)
                         analysis.submit(frame, timestamp, capture_timestamp)
-                        last_detections, events = analysis.drain()
-                        annotated = draw_detections(frame.copy(), last_detections)
+                        last_detections, events, last_face_matches = analysis.drain()
+                        annotated = draw_detections(frame.copy(), last_detections, face_matches=last_face_matches)
                         evidence.record_frame(annotated, timestamp)
                         for event, event_frame, event_capture_timestamp in events:
                             self._store_alert(event, event_frame, evidence, event_capture_timestamp)
@@ -166,23 +221,25 @@ class LiveCameraRunner:
                             last_metrics = now
                         if now - stats_window[0] >= stats_interval and (stats_pending is None or stats_pending.done()):
                             window = max(now - stats_window[0], 0.001)
-                            payload = self._stats_payload(source, last_detections, (summary.frames_analyzed - stats_window[1]) / window, (published_frames - stats_window[2]) / window)
+                            payload = self._stats_payload(source, last_detections, (summary.frames_analyzed - stats_window[1]) / window, (published_frames - stats_window[2]) / window, face_matches=last_face_matches)
                             stats_window = (now, summary.frames_analyzed, published_frames)
                             stats_pending = stats_executor.submit(self._publish_stats, payload)
                 finally:
                     stats_executor.shutdown(wait=True)
                     analysis.close()
-                    last_detections, events = analysis.drain()
+                    last_detections, events, last_face_matches = analysis.drain()
                     for event, event_frame, event_capture_timestamp in events:
                         self._store_alert(event, event_frame, evidence, event_capture_timestamp)
                     evidence.flush()
         summary.analysis_fps = summary.frames_analyzed / max(perf_counter() - started, 0.001)
         return summary
 
-    def _stats_payload(self, source, detections, analysis_fps, published_fps):
+    def _stats_payload(self, source, detections, analysis_fps, published_fps, face_matches=None):
         labels = {}
         for detection in detections:
             labels[detection.label] = labels.get(detection.label, 0) + 1
+        if face_matches:
+            labels["face_match"] = len(face_matches)
         return {
             "camera_id": str(self.camera.id),
             "analysis_fps": round(analysis_fps, 2),

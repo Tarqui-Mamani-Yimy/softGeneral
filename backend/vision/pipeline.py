@@ -29,12 +29,21 @@ def process_video(
     rules_engine=None,
     evidence=None,
     on_alert=None,
+    banned_candidates: list[dict] | None = None,
 ) -> RunSummary:
     if stride < 1:
         raise ValueError("stride must be at least 1")
     analyzers = list(analyzers)
+    face_engine = None
+    if banned_candidates:
+        try:
+            from vision.face.recognizer import FaceRecognitionEngine
+            face_engine = FaceRecognitionEngine()
+        except Exception:
+            pass
     counts: Counter[str] = Counter()
     last_detections: list[DetectionResult] = []
+    last_face_matches = []
     frames_read = frames_analyzed = 0
     started = perf_counter()
     if on_progress:
@@ -52,12 +61,26 @@ def process_video(
                     elif isinstance(result, ClassificationResult):
                         counts[result.label] += 1
             last_detections = current
+            if face_engine and banned_candidates:
+                try:
+                    last_face_matches = face_engine.find_matches(frame, banned_candidates)
+                    if last_face_matches:
+                        counts["face_match"] += len(last_face_matches)
+                except Exception:
+                    last_face_matches = []
         timestamp_s = frames_read / source.fps if source.fps else float(frames_read)
-        annotated = draw_detections(frame.copy(), last_detections)
+        annotated = draw_detections(frame.copy(), last_detections, face_matches=last_face_matches)
         if rules_engine is not None and frames_read % stride == 0:
             person_tracks = [result for result in last_detections if result.label == "person"]
             detections = [result for result in last_detections if result.label != "person"]
-            events = rules_engine.update(frames_read, timestamp_s, source.frame_size, person_tracks, detections)
+            events = rules_engine.update(
+                frames_read,
+                timestamp_s,
+                source.frame_size,
+                person_tracks,
+                detections,
+                face_matches=last_face_matches,
+            )
             if evidence is not None:
                 evidence.record_frame(annotated, timestamp_s)
             if on_alert is not None:

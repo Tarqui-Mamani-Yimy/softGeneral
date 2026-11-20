@@ -24,22 +24,18 @@ export const AlertsPage: React.FC = () => {
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(true);
   const [alertsError, setAlertsError] = useState<string | null>(null);
 
-  // Realtime highlight & sound
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [highlightedAlertIds, setHighlightedAlertIds] = useState<Set<string>>(new Set());
 
-  // Evidence state
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const [isLoadingEvidence, setIsLoadingEvidence] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
-  // Review state
   const [reviewNotes, setReviewNotes] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
-  // Refs for tracking blob URLs for cleanup
   const currentSnapshotUrlRef = useRef<string | null>(null);
   const currentClipUrlRef = useRef<string | null>(null);
 
@@ -56,7 +52,6 @@ export const AlertsPage: React.FC = () => {
     setClipUrl(null);
   };
 
-  // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
       clearBlobUrls();
@@ -82,7 +77,7 @@ export const AlertsPage: React.FC = () => {
       osc.start();
       osc.stop(ctx.currentTime + 0.35);
     } catch {
-      // Audio autoplay or context may be blocked
+      // Ignorar bloqueo de autoplay
     }
   }, [soundEnabled]);
 
@@ -102,78 +97,65 @@ export const AlertsPage: React.FC = () => {
             return next;
           });
         }, 5000);
+        playAlertSound();
       }
-
-      playAlertSound();
     },
-    [statusFilter, typeFilter, videoJobIdFilter, playAlertSound],
+    [statusFilter, typeFilter, videoJobIdFilter, playAlertSound]
   );
 
-  const { status: streamStatus, isConnected } = useAlertStream({
+  const { isConnected } = useAlertStream({
+    enabled: true,
     onAlert: handleIncomingAlert,
   });
 
-  const fetchAlertsList = useCallback(
+  const loadAlerts = useCallback(
     async (isPolling = false) => {
+      if (!isPolling) setIsLoadingAlerts(true);
       try {
         const data = await listAlerts({
           status: statusFilter || undefined,
           alert_type: typeFilter || undefined,
           video_job_id: videoJobIdFilter || undefined,
+          limit: 100,
         });
         setAlerts(data);
         setAlertsError(null);
-
-        // Auto-select first alert if none selected or current selection disappeared
         setSelectedAlertId((prev) => {
-          if (prev && data.some((a) => a.id === prev)) {
-            return prev;
-          }
+          if (prev && data.some((a) => a.id === prev)) return prev;
           return data.length > 0 ? data[0].id : null;
         });
       } catch (err) {
         if (!isPolling) {
-          setAlertsError(err instanceof ApiError ? err.detail : 'Failed to load security alerts');
+          setAlertsError(err instanceof ApiError ? err.detail : 'Error al consultar incidentes');
         }
       } finally {
-        if (!isPolling) {
-          setIsLoadingAlerts(false);
-        }
+        if (!isPolling) setIsLoadingAlerts(false);
       }
     },
-    [statusFilter, typeFilter, videoJobIdFilter],
+    [statusFilter, typeFilter, videoJobIdFilter]
   );
 
-  // Initial and on filter change
   useEffect(() => {
-    setIsLoadingAlerts(true);
-    fetchAlertsList();
-  }, [fetchAlertsList]);
+    loadAlerts();
+  }, [loadAlerts]);
 
-  // Polling every 5s only while disconnected
   useEffect(() => {
-    if (isConnected) {
-      return;
-    }
+    if (isConnected) return;
     const intervalId = setInterval(() => {
-      fetchAlertsList(true);
+      loadAlerts(true);
     }, 5000);
-
     return () => clearInterval(intervalId);
-  }, [fetchAlertsList, isConnected]);
+  }, [isConnected, loadAlerts]);
 
   const selectedAlert = alerts.find((a) => a.id === selectedAlertId) ?? null;
 
-  // Load evidence (snapshot and clip) when selected alert changes
   useEffect(() => {
     clearBlobUrls();
     setEvidenceError(null);
     setReviewError(null);
-    setReviewNotes('');
+    setReviewNotes(selectedAlert?.review_notes ?? '');
 
-    if (!selectedAlert) {
-      return;
-    }
+    if (!selectedAlert) return;
 
     let isCancelled = false;
 
@@ -181,14 +163,13 @@ export const AlertsPage: React.FC = () => {
       setIsLoadingEvidence(true);
       try {
         if (selectedAlert.has_snapshot) {
-          const blob = await fetchAlertSnapshotBlob(selectedAlert.id);
+          const snapBlob = await fetchAlertSnapshotBlob(selectedAlert.id);
           if (!isCancelled) {
-            const url = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(snapBlob);
             currentSnapshotUrlRef.current = url;
             setSnapshotUrl(url);
           }
         }
-
         if (selectedAlert.has_clip) {
           const clipBlob = await fetchAlertClipBlob(selectedAlert.id);
           if (!isCancelled) {
@@ -199,7 +180,9 @@ export const AlertsPage: React.FC = () => {
         }
       } catch (err) {
         if (!isCancelled) {
-          setEvidenceError(err instanceof ApiError ? err.detail : 'Failed to load media evidence');
+          setEvidenceError(
+            err instanceof ApiError ? err.detail : 'Archivo de evidencia no disponible en almacenamiento local'
+          );
         }
       } finally {
         if (!isCancelled) {
@@ -213,44 +196,18 @@ export const AlertsPage: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [selectedAlert]);
+  }, [selectedAlert?.id]);
 
-  const handleReview = async (status: 'confirmed' | 'false_alarm') => {
-    if (!selectedAlert) return;
-    setIsSubmittingReview(true);
-    setReviewError(null);
-
-    try {
-      const updated = await reviewAlert(selectedAlert.id, {
-        status,
-        notes: reviewNotes.trim() || undefined,
-      });
-
-      // Update local state and refresh list
-      setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-      setReviewNotes('');
-      fetchAlertsList(true);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setReviewError(err.detail);
-      } else {
-        setReviewError('Failed to submit review');
-      }
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  };
-
-  const handleStatusFilterChange = (val: string) => {
+  const handleStatusFilterChange = (value: string) => {
     const next = new URLSearchParams(searchParams);
-    if (val) next.set('status', val);
+    if (value) next.set('status', value);
     else next.delete('status');
     setSearchParams(next);
   };
 
-  const handleTypeFilterChange = (val: string) => {
+  const handleTypeFilterChange = (value: string) => {
     const next = new URLSearchParams(searchParams);
-    if (val) next.set('alert_type', val);
+    if (value) next.set('alert_type', value);
     else next.delete('alert_type');
     setSearchParams(next);
   };
@@ -261,193 +218,225 @@ export const AlertsPage: React.FC = () => {
     setSearchParams(next);
   };
 
-  const renderStatusBadge = (status: string) => {
+  const handleReview = async (status: 'confirmed' | 'false_alarm') => {
+    if (!selectedAlert) return;
+    setIsSubmittingReview(true);
+    setReviewError(null);
+    try {
+      const updated = await reviewAlert(selectedAlert.id, {
+        status,
+        notes: reviewNotes.trim() || undefined,
+      });
+      setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (err) {
+      setReviewError(err instanceof ApiError ? err.detail : 'Error al registrar dictamen');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const renderStatusBadge = (status: Alert['status']) => {
     switch (status) {
       case 'pending':
         return (
-          <span className="inline-flex items-center rounded-full border border-amber-800 bg-amber-950 px-2 py-0.5 text-xs font-medium text-amber-300">
-            Pending
+          <span className="inline-flex items-center gap-1 rounded border border-amber-800/60 bg-amber-950/60 px-2 py-0.5 text-[10px] font-mono uppercase text-amber-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            Pendiente
           </span>
         );
       case 'confirmed':
         return (
-          <span className="inline-flex items-center rounded-full border border-rose-800 bg-rose-950 px-2 py-0.5 text-xs font-medium text-rose-300">
-            Confirmed
+          <span className="inline-flex items-center gap-1 rounded border border-red-800/60 bg-red-950/60 px-2 py-0.5 text-[10px] font-mono uppercase text-red-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+            Confirmada
           </span>
         );
       case 'false_alarm':
         return (
-          <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400">
-            False Alarm
+          <span className="inline-flex items-center gap-1 rounded border border-[#282e3d] bg-[#161a24] px-2 py-0.5 text-[10px] font-mono uppercase text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+            Falsa Alarma
           </span>
         );
-      default:
-        return <span>{status}</span>;
     }
   };
 
   const renderTypeBadge = (type: string) => {
     switch (type) {
-      case 'intrusion':
-        return (
-          <span className="inline-flex items-center rounded bg-amber-900/40 text-amber-300 border border-amber-700/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider">
-            Intrusion
-          </span>
-        );
       case 'weapon':
         return (
-          <span className="inline-flex items-center rounded bg-red-900/40 text-red-300 border border-red-700/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider">
-            Weapon
+          <span className="inline-flex items-center rounded border border-rose-700/60 bg-rose-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-200">
+            Arma
           </span>
         );
       case 'fire_smoke':
         return (
-          <span className="inline-flex items-center rounded bg-orange-900/40 text-orange-300 border border-orange-700/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider">
-            Fire/Smoke
+          <span className="inline-flex items-center rounded border border-orange-700/60 bg-orange-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-200">
+            Fuego / Humo
           </span>
         );
       case 'fight':
         return (
-          <span className="inline-flex items-center rounded bg-purple-900/40 text-purple-300 border border-purple-700/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider">
-            Fight
+          <span className="inline-flex items-center rounded border border-amber-700/60 bg-amber-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200">
+            Pelea
+          </span>
+        );
+      case 'intrusion':
+        return (
+          <span className="inline-flex items-center rounded border border-blue-700/60 bg-blue-950/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-200">
+            Intrusión
+          </span>
+        );
+      case 'face_match':
+        return (
+          <span className="inline-flex items-center rounded border border-red-600/80 bg-red-950/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-200">
+            Persona Vetada
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center rounded bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider">
+          <span className="inline-flex items-center rounded border border-[#2a3142] bg-[#181c26] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
             {type}
           </span>
         );
     }
   };
 
+  const formatAlertTypeName = (type: string) => {
+    switch (type) {
+      case 'weapon':
+        return 'Detección de Arma';
+      case 'fire_smoke':
+        return 'Detección de Fuego / Humo';
+      case 'fight':
+        return 'Detección de Altercado / Pelea';
+      case 'intrusion':
+        return 'Intrusión en Perímetro Restringido';
+      case 'face_match':
+        return 'Identificación Biométrica de Persona Vetada';
+      default:
+        return `Incidente (${type})`;
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight text-white">Security Alerts</h2>
-            {streamStatus === 'connected' ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-800 bg-emerald-950/80 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-            ) : streamStatus === 'reconnecting' ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-800 bg-amber-950/80 px-2.5 py-0.5 text-xs font-medium text-amber-300">
-                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                Reconnecting
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-xs font-medium text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-slate-500" />
-                Offline (Polling)
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-slate-400 mt-0.5">
-            Real-time incident detection feed. Review evidence footage and confirm or dismiss alerts.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setSoundEnabled((prev) => !prev)}
-            aria-pressed={soundEnabled}
-            className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              soundEnabled
-                ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
-                : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>Audio Alert: {soundEnabled ? 'ON' : 'OFF'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Bar */}
-      <section aria-label="Alert filters" className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div>
-            <label htmlFor="filter-status" className="block text-xs font-medium text-slate-400 mb-1">
-              Status
+    <div className="space-y-4">
+      {/* Barra superior de herramientas y filtros */}
+      <section
+        aria-label="Filtros de alertas"
+        className="rounded-md border border-[#1e2330] bg-[#12151c] p-3.5 flex flex-wrap items-center justify-between gap-3"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label htmlFor="filter-status" className="text-xs font-medium text-slate-400">
+              Dictamen:
             </label>
             <select
               id="filter-status"
               value={statusFilter}
               onChange={(e) => handleStatusFilterChange(e.target.value)}
-              className="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+              className="rounded border border-[#252b3b] bg-[#0e1117] px-2.5 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
             >
-              <option value="">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="false_alarm">False Alarm</option>
+              <option value="">Todos los Estados</option>
+              <option value="pending">Pendientes de Revisión</option>
+              <option value="confirmed">Confirmadas</option>
+              <option value="false_alarm">Falsas Alarmas</option>
             </select>
           </div>
 
-          <div>
-            <label htmlFor="filter-type" className="block text-xs font-medium text-slate-400 mb-1">
-              Alert Type
+          <div className="flex items-center gap-2">
+            <label htmlFor="filter-type" className="text-xs font-medium text-slate-400">
+              Categoría:
             </label>
             <select
               id="filter-type"
               value={typeFilter}
               onChange={(e) => handleTypeFilterChange(e.target.value)}
-              className="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+              className="rounded border border-[#252b3b] bg-[#0e1117] px-2.5 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
             >
-              <option value="">All Types</option>
-              <option value="intrusion">Intrusion</option>
-              <option value="weapon">Weapon</option>
-              <option value="fire_smoke">Fire / Smoke</option>
-              <option value="fight">Fight</option>
-              <option value="face_match">Face Match</option>
+              <option value="">Todas las Categorías</option>
+              <option value="face_match">Persona Vetada (Biometría)</option>
+              <option value="weapon">Arma</option>
+              <option value="intrusion">Intrusión</option>
+              <option value="fire_smoke">Fuego / Humo</option>
+              <option value="fight">Pelea</option>
             </select>
           </div>
 
           {videoJobIdFilter && (
-            <div className="flex items-center gap-2 mt-4 sm:mt-0">
-              <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 rounded px-2.5 py-1">
-                Job: {videoJobIdFilter.slice(0, 8)}...
+            <div className="flex items-center gap-2 rounded border border-blue-800/50 bg-blue-950/40 px-2.5 py-1 text-xs">
+              <span className="font-mono text-blue-300">
+                TRABAJO: {videoJobIdFilter.slice(0, 8)}
               </span>
               <button
                 type="button"
                 onClick={handleClearVideoFilter}
-                className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                className="text-slate-400 hover:text-white underline cursor-pointer"
               >
-                Clear job filter
+                Quitar filtro
               </button>
             </div>
           )}
         </div>
+
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-[11px] font-mono ${
+              isConnected
+                ? 'border-emerald-800/50 bg-emerald-950/30 text-emerald-300'
+                : 'border-[#252b3b] bg-[#0e1117] text-slate-400'
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+            {isConnected ? 'STREAM WS ACTIVO' : 'POLLING 5S'}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+              soundEnabled
+                ? 'border-blue-600/60 bg-blue-950/50 text-blue-200'
+                : 'border-[#252b3b] bg-[#0e1117] text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
+            Alerta Sonora: {soundEnabled ? 'ACTIVA' : 'SILENCIADA'}
+          </button>
+        </div>
       </section>
 
-      {/* Main Grid: Alerts list + Detail view */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left column: Alerts list */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-sm font-semibold text-slate-300">Incident Feed ({alerts.length})</h3>
-            <span className="text-[11px] text-slate-500">
-              {isConnected ? 'Realtime (WebSocket)' : 'Auto-refresh: 5s'}
+      {/* Consola dividida: Cola de Incidentes (Izquierda) + Estación de Inspección (Derecha) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Cola de Incidentes */}
+        <div className="lg:col-span-4 rounded-md border border-[#1e2330] bg-[#12151c] flex flex-col overflow-hidden">
+          <div className="border-b border-[#1e2330] bg-[#161a23] px-4 py-2.5 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+              Cola de Eventos
+            </h3>
+            <span className="rounded bg-[#0e1117] border border-[#252b3b] px-2 py-0.5 font-mono text-[11px] text-slate-300">
+              {alerts.length} registros
             </span>
           </div>
 
           {alertsError && (
-            <div role="alert" className="rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+            <div role="alert" className="m-3 rounded border border-red-500/30 bg-red-950/30 p-2.5 text-xs text-red-300">
               {alertsError}
             </div>
           )}
 
           {isLoadingAlerts ? (
-            <div role="status" className="rounded-lg border border-slate-800 bg-slate-950 p-8 text-center text-xs text-slate-500">
-              Loading incident feed...
+            <div role="status" className="p-10 text-center text-xs text-slate-500">
+              Cargando cola de incidentes...
             </div>
           ) : alerts.length === 0 ? (
-            <div className="rounded-lg border border-slate-800 bg-slate-950 p-8 text-center text-xs text-slate-500">
-              No alerts match the selected criteria.
+            <div className="p-10 text-center text-xs text-slate-500">
+              No existen eventos que coincidan con los filtros aplicados.
             </div>
           ) : (
-            <ul className="space-y-2 max-h-[700px] overflow-y-auto pr-1">
+            <ul className="divide-y divide-[#1a1f2b] max-h-[680px] overflow-y-auto">
               {alerts.map((alert) => {
                 const isSelected = alert.id === selectedAlertId;
                 const isHighlighted = highlightedAlertIds.has(alert.id);
@@ -456,28 +445,42 @@ export const AlertsPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedAlertId(alert.id)}
-                      className={`w-full text-left rounded-lg border p-3.5 transition-all cursor-pointer ${
+                      className={`w-full text-left px-4 py-3 transition-colors cursor-pointer border-l-2 ${
                         isHighlighted
-                          ? 'border-emerald-400 bg-emerald-950/40 ring-2 ring-emerald-400/60 shadow-lg'
+                          ? 'border-l-amber-400 bg-amber-950/20'
                           : isSelected
-                            ? 'border-emerald-500 bg-slate-850 bg-slate-900 shadow-md ring-1 ring-emerald-500/40'
-                            : 'border-slate-800 bg-slate-950 hover:bg-slate-900/60'
+                            ? 'border-l-blue-500 bg-[#191e2b]'
+                            : 'border-l-transparent hover:bg-[#161a24]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           {renderTypeBadge(alert.alert_type)}
                           {isHighlighted && (
-                            <span className="inline-flex items-center rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-black animate-pulse">
-                              Live
+                            <span className="rounded bg-amber-500 px-1.5 py-0.2 text-[9px] font-bold uppercase text-black">
+                              NUEVO
                             </span>
                           )}
                         </div>
                         {renderStatusBadge(alert.status)}
                       </div>
-                      <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
-                        <span>Confidence: {(alert.confidence * 100).toFixed(0)}%</span>
-                        <span>{new Date(alert.occurred_at).toLocaleTimeString()}</span>
+
+                      {alert.alert_type === 'face_match' && Boolean(alert.details?.full_name) && (
+                        <div className="text-xs font-semibold text-red-300 truncate mb-1">
+                          Sujeto: {String(alert.details?.full_name)}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>CONF: {(alert.confidence * 100).toFixed(1)}%</span>
+                        <span>
+                          {new Date(alert.occurred_at).toLocaleTimeString('es-BO', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false,
+                          })}
+                        </span>
                       </div>
                     </button>
                   </li>
@@ -487,166 +490,218 @@ export const AlertsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Right column: Detail Panel */}
-        <div className="lg:col-span-7">
-          {selectedAlert ? (
-            <article aria-labelledby="alert-detail-title" className="rounded-lg border border-slate-800 bg-slate-950 p-6 space-y-6">
-              <header className="border-b border-slate-800 pb-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <h3 id="alert-detail-title" className="text-lg font-bold text-white capitalize">
-                      {selectedAlert.alert_type.replace('_', ' ')} Incident
+        {/* Panel de Detalle y Evidencia */}
+        <div className="lg:col-span-8">
+          {!selectedAlert ? (
+            <div className="rounded-md border border-[#1e2330] bg-[#12151c] p-16 text-center text-xs text-slate-500">
+              Seleccione un evento de la cola izquierda para examinar su evidencia audiovisual y emitir un dictamen.
+            </div>
+          ) : (
+            <div className="rounded-md border border-[#1e2330] bg-[#12151c] overflow-hidden">
+              {/* Cabecera técnica del incidente */}
+              <div className="border-b border-[#1e2330] bg-[#161a23] px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-sm font-semibold text-white">
+                      {formatAlertTypeName(selectedAlert.alert_type)}
                     </h3>
                     {renderStatusBadge(selectedAlert.status)}
                   </div>
-                  <span className="text-xs font-mono text-slate-400">ID: {selectedAlert.id}</span>
-                </div>
-                <div className="mt-2 text-xs text-slate-400 flex flex-wrap gap-x-6 gap-y-1">
-                  <span>Occurred: <strong className="text-slate-200">{new Date(selectedAlert.occurred_at).toLocaleString()}</strong></span>
-                  <span>Confidence: <strong className="text-emerald-400">{(selectedAlert.confidence * 100).toFixed(1)}%</strong></span>
-                  {selectedAlert.track_id !== null && (
-                    <span>Track ID: <strong className="text-slate-200">#{selectedAlert.track_id}</strong></span>
-                  )}
-                  {selectedAlert.video_job_id && (
-                    <span>Video Job: <strong className="text-slate-200">{selectedAlert.video_job_id.slice(0, 8)}</strong></span>
-                  )}
-                </div>
-              </header>
-
-              {/* Evidence Media Section */}
-              <section aria-label="Incident evidence" className="space-y-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Evidence Footage</h4>
-
-                {isLoadingEvidence && (
-                  <p className="text-xs text-slate-500 py-4 text-center">Loading media evidence...</p>
-                )}
-
-                {evidenceError && (
-                  <div role="alert" className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-400">
-                    {evidenceError}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Snapshot */}
-                  <div className="space-y-2">
-                    <span className="block text-xs font-medium text-slate-400">Snapshot (JPEG)</span>
-                    <div className="rounded-md border border-slate-800 bg-black aspect-video flex items-center justify-center overflow-hidden">
-                      {snapshotUrl ? (
-                        <img
-                          src={snapshotUrl}
-                          alt={`Incident snapshot for alert ${selectedAlert.id}`}
-                          className="h-full w-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-600">
-                          {selectedAlert.has_snapshot ? 'Loading image...' : 'No snapshot recorded'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Clip */}
-                  <div className="space-y-2">
-                    <span className="block text-xs font-medium text-slate-400">Video Clip (MP4)</span>
-                    <div className="rounded-md border border-slate-800 bg-black aspect-video flex items-center justify-center overflow-hidden">
-                      {clipUrl ? (
-                        <video controls src={clipUrl} className="h-full w-full object-contain">
-                          <track kind="captions" />
-                        </video>
-                      ) : (
-                        <span className="text-xs text-slate-600">
-                          {selectedAlert.has_clip ? 'Loading video...' : 'No clip recorded'}
-                        </span>
-                      )}
-                    </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400">
+                    <span>
+                      FECHA/HORA: <strong className="text-slate-200">{new Date(selectedAlert.occurred_at).toLocaleString('es-BO')}</strong>
+                    </span>
+                    <span>
+                      CONFIANZA: <strong className="text-emerald-400">{(selectedAlert.confidence * 100).toFixed(1)}%</strong>
+                    </span>
+                    {selectedAlert.track_id !== null && (
+                      <span>
+                        PISTA ID: <strong className="text-slate-200">#{selectedAlert.track_id}</strong>
+                      </span>
+                    )}
                   </div>
                 </div>
-              </section>
+                <div className="text-right font-mono text-[10px] text-slate-500">
+                  UUID: {selectedAlert.id}
+                </div>
+              </div>
 
-              {/* Review Section */}
-              <section aria-label="Review actions" className="border-t border-slate-800 pt-4 space-y-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Review & Assessment</h4>
-
-                {selectedAlert.status !== 'pending' ? (
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-4 space-y-2 text-xs">
+              <div className="p-5 space-y-5">
+                {/* Ficha de Identificación Biométrica si es persona vetada */}
+                {selectedAlert.alert_type === 'face_match' && selectedAlert.details && (
+                  <div className="rounded border border-red-800/60 bg-red-950/30 p-3.5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Assessment Verdict:</span>
-                      {renderStatusBadge(selectedAlert.status)}
+                      <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-red-300">
+                        ● Coincidencia en Padrón Biométrico de Personas Vetadas
+                      </span>
+                      {Boolean(selectedAlert.details.severity) && (
+                        <span className="rounded bg-red-900/60 border border-red-700/60 px-2 py-0.5 font-mono text-[10px] uppercase text-red-200">
+                          RIESGO: {String(selectedAlert.details.severity)}
+                        </span>
+                      )}
                     </div>
-                    {selectedAlert.reviewed_at && (
-                      <div className="text-slate-400">
-                        Reviewed at: <span className="text-slate-200">{new Date(selectedAlert.reviewed_at).toLocaleString()}</span>
-                      </div>
+                    {Boolean(selectedAlert.details.full_name) && (
+                      <p className="text-sm font-bold text-white">
+                        Sujeto Identificado: {String(selectedAlert.details.full_name)}
+                      </p>
                     )}
-                    {selectedAlert.reviewed_by && (
-                      <div className="text-slate-400">
-                        Reviewed by Operator ID: <span className="font-mono text-slate-200">{selectedAlert.reviewed_by}</span>
-                      </div>
-                    )}
-                    {selectedAlert.review_notes && (
-                      <div className="pt-2 text-slate-300">
-                        <span className="text-slate-500 block mb-0.5">Operator Notes:</span>
-                        <p className="bg-slate-950 p-2.5 rounded border border-slate-800 italic">
-                          "{selectedAlert.review_notes}"
-                        </p>
-                      </div>
+                    {Boolean(selectedAlert.details.reason) && (
+                      <p className="text-xs text-red-200/90">
+                        Causal registrada: {String(selectedAlert.details.reason)}
+                      </p>
                     )}
                   </div>
-                ) : canReview ? (
-                  <div className="space-y-4 bg-slate-900/40 p-4 rounded-lg border border-slate-800">
-                    <div>
-                      <label htmlFor="review-notes" className="block text-xs font-medium text-slate-300 mb-1">
-                        Review Notes (optional, max 1000 characters)
-                      </label>
-                      <textarea
-                        id="review-notes"
-                        rows={2}
-                        maxLength={1000}
-                        value={reviewNotes}
-                        disabled={isSubmittingReview}
-                        onChange={(e) => setReviewNotes(e.target.value)}
-                        placeholder="Add operator assessment observations..."
-                        className="w-full rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-
-                    {reviewError && (
-                      <div role="alert" className="rounded border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-400">
-                        {reviewError}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => handleReview('confirmed')}
-                        disabled={isSubmittingReview}
-                        className="rounded bg-rose-600 hover:bg-rose-500 px-4 py-2 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        {isSubmittingReview ? 'Submitting...' : 'Confirm Incident'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleReview('false_alarm')}
-                        disabled={isSubmittingReview}
-                        className="rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        {isSubmittingReview ? 'Submitting...' : 'Mark False Alarm'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 italic">
-                    Operator review is pending. Your active account lacks "alerts.review" permission to change this verdict.
-                  </p>
                 )}
-              </section>
-            </article>
-          ) : (
-            <div className="rounded-lg border border-slate-800 bg-slate-950 p-12 text-center text-xs text-slate-500">
-              Select an alert from the feed to view footage and review details.
+
+                {/* Visores de Evidencia Audiovisual */}
+                <section aria-label="Evidencia del incidente" className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Evidencia Registrada
+                    </h4>
+                    <span className="font-mono text-[10px] text-slate-500">
+                      ALMACENAMIENTO FORENSE LOCAL
+                    </span>
+                  </div>
+
+                  {evidenceError && (
+                    <div role="alert" className="rounded border border-red-500/30 bg-red-950/30 p-2.5 text-xs text-red-300">
+                      {evidenceError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Fotograma JPEG */}
+                    <div className="rounded border border-[#222836] bg-[#0b0d11] overflow-hidden">
+                      <div className="border-b border-[#1e2330] bg-[#10131a] px-3 py-1.5 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>CAPTURA DE FOTOGRAMA</span>
+                        <span>JPEG</span>
+                      </div>
+                      <div className="aspect-video flex items-center justify-center bg-black">
+                        {isLoadingEvidence ? (
+                          <span className="text-xs font-mono text-slate-500">Decodificando imagen...</span>
+                        ) : snapshotUrl ? (
+                          <img
+                            src={snapshotUrl}
+                            alt={`Captura de incidente ${selectedAlert.alert_type}`}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-xs font-mono text-slate-600">SIN CAPTURA DISPONIBLE</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Clip MP4 */}
+                    <div className="rounded border border-[#222836] bg-[#0b0d11] overflow-hidden">
+                      <div className="border-b border-[#1e2330] bg-[#10131a] px-3 py-1.5 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>SECUENCIA DE VIDEO</span>
+                        <span>MP4 / H.264</span>
+                      </div>
+                      <div className="aspect-video flex items-center justify-center bg-black">
+                        {isLoadingEvidence ? (
+                          <span className="text-xs font-mono text-slate-500">Cargando flujo de video...</span>
+                        ) : clipUrl ? (
+                          <video
+                            src={clipUrl}
+                            controls
+                            preload="metadata"
+                            aria-label="Clip de evidencia del incidente"
+                            className="max-h-full max-w-full"
+                          />
+                        ) : (
+                          <span className="text-xs font-mono text-slate-600">SIN CLIP DISPONIBLE</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Sección de Evaluación y Dictamen del Operador */}
+                <section aria-label="Acciones de revisión" className="border-t border-[#1e2330] pt-4 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Dictamen Operativo de Sala de Control
+                  </h4>
+
+                  {selectedAlert.status !== 'pending' ? (
+                    <div className="rounded border border-[#222836] bg-[#0e1117] p-4 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Resolución registrada:</span>
+                        {renderStatusBadge(selectedAlert.status)}
+                      </div>
+                      {selectedAlert.reviewed_at && (
+                        <div className="text-slate-400 font-mono text-[11px]">
+                          TIMESTAMP REVISIÓN:{' '}
+                          <span className="text-slate-200">
+                            {new Date(selectedAlert.reviewed_at).toLocaleString('es-BO')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedAlert.reviewed_by && (
+                        <div className="text-slate-400 font-mono text-[11px]">
+                          OPERADOR ID: <span className="text-slate-200">{selectedAlert.reviewed_by}</span>
+                        </div>
+                      )}
+                      {selectedAlert.review_notes && (
+                        <div className="pt-1.5">
+                          <span className="text-[11px] text-slate-500 block mb-1">Observaciones en acta:</span>
+                          <p className="rounded border border-[#1e2330] bg-[#12151c] p-2.5 text-slate-300">
+                            {selectedAlert.review_notes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : canReview ? (
+                    <div className="rounded border border-[#222836] bg-[#0e1117] p-4 space-y-3">
+                      <div>
+                        <label htmlFor="review-notes" className="block text-xs font-medium text-slate-300 mb-1">
+                          Observaciones del Operador (opcional)
+                        </label>
+                        <textarea
+                          id="review-notes"
+                          rows={2}
+                          maxLength={1000}
+                          value={reviewNotes}
+                          disabled={isSubmittingReview}
+                          onChange={(e) => setReviewNotes(e.target.value)}
+                          placeholder="Consigne las acciones tomadas o detalles relevantes de la verificación..."
+                          className="w-full rounded border border-[#252b3b] bg-[#12151c] p-2 text-xs text-slate-200 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {reviewError && (
+                        <div role="alert" className="rounded border border-red-500/30 bg-red-950/30 p-2.5 text-xs text-red-300">
+                          {reviewError}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleReview('confirmed')}
+                          disabled={isSubmittingReview}
+                          className="rounded bg-red-600 hover:bg-red-500 px-4 py-2 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isSubmittingReview ? 'Procesando...' : 'Confirmar Incidente Real'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleReview('false_alarm')}
+                          disabled={isSubmittingReview}
+                          className="rounded border border-[#282e3d] bg-[#161a24] hover:bg-[#1e2433] px-4 py-2 text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isSubmittingReview ? 'Procesando...' : 'Descartar como Falsa Alarma'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      Este evento se encuentra pendiente de dictamen por un operador con privilegios de revisión.
+                    </p>
+                  )}
+                </section>
+              </div>
             </div>
           )}
         </div>
