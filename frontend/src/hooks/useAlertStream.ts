@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from './useAuth';
 import { getAuthToken } from '../services/apiClient';
+import { sendNativePushNotification } from '../services/pushNotification';
 import type { Alert } from '../types/alert';
 import type { CameraMetrics } from '../types/camera';
 
@@ -142,6 +143,16 @@ export function useAlertStream(options: UseAlertStreamOptions = {}): UseAlertStr
           if (onAlertRef.current) {
             onAlertRef.current(alert);
           }
+          // Native push notification to mobile OS and desktop
+          const alertTypeLabel = alert.alert_type ? String(alert.alert_type).toUpperCase() : 'INCIDENTE';
+          const confPercent = alert.confidence ? Math.round(alert.confidence * 100) : null;
+          const confText = confPercent ? ` (${confPercent}%)` : '';
+          sendNativePushNotification({
+            title: `🚨 Alerta: ${alertTypeLabel}${confText}`,
+            body: `Evento detectado en el recinto deportivo. Verifique de inmediato el panel de incidentes.`,
+            tag: `alert-${alert.id}`,
+            url: '/alerts',
+          }).catch(() => {});
         } else if (data.type === 'camera_metrics' && data.camera_id && data.metrics) {
           const metrics = data.metrics as CameraMetrics;
           const cameraId = String(data.camera_id);

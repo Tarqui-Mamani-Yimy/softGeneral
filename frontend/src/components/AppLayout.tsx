@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks';
+import { AIAssistantModal } from './AIAssistantModal';
 
 interface NavItem {
   name: string;
@@ -51,6 +52,11 @@ export const AppLayout: React.FC = () => {
   const canManageUsers = (user?.permissions.includes('users.manage') || user?.role === 'admin') ?? false;
 
   const [clock, setClock] = useState(() => new Date());
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -183,26 +189,51 @@ export const AppLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#0b0d11] text-slate-100">
+    <div className="flex min-h-screen bg-[#0b0d11] text-slate-100 relative">
+      {/* Backdrop móvil */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Barra lateral institucional */}
-      <aside className="w-60 flex-shrink-0 border-r border-[#1e2330] bg-[#10131a] flex flex-col justify-between select-none">
+      <aside
+        className={`${
+          isMobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 flex shadow-2xl' : 'hidden md:flex'
+        } w-60 flex-shrink-0 border-r border-[#1e2330] bg-[#10131a] flex-col justify-between select-none transition-all duration-200`}
+      >
         <div>
           {/* Cabecera de marca */}
-          <div className="h-14 border-b border-[#1e2330] px-4 flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600/15 border border-blue-500/30 text-blue-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-            </div>
-            <div className="leading-tight">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold tracking-tight text-white">SIV-Estadio</span>
-                <span className="rounded bg-[#1a1f2c] border border-[#2a3142] px-1 py-0.2 text-[9px] font-mono text-slate-400">
-                  VMS
-                </span>
+          <div className="h-14 border-b border-[#1e2330] px-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600/15 border border-blue-500/30 text-blue-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                </svg>
               </div>
-              <p className="text-[11px] text-slate-500">Seguridad y Biometría</p>
+              <div className="leading-tight">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold tracking-tight text-white">SIV-Estadio</span>
+                  <span className="rounded bg-[#1a1f2c] border border-[#2a3142] px-1 py-0.2 text-[9px] font-mono text-slate-400">
+                    VMS
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">Seguridad & Biometría</p>
+              </div>
             </div>
+
+            {/* Botón cerrar en móvil */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="md:hidden p-1 text-slate-400 hover:text-white"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           {/* Menú de navegación agrupado */}
@@ -215,8 +246,8 @@ export const AppLayout: React.FC = () => {
         </div>
 
         {/* Panel inferior de operador */}
-        <div className="border-t border-[#1e2330] bg-[#0d1016] p-3">
-          <div className="flex items-center justify-between gap-2 mb-2.5 px-1">
+        <div className="border-t border-[#1e2330] bg-[#0d1016] p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2 px-1">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-slate-200 truncate">
                 {user?.full_name ?? 'Operador de Turno'}
@@ -240,8 +271,8 @@ export const AppLayout: React.FC = () => {
             </button>
           </div>
           <div className="flex items-center justify-between rounded bg-[#131720] border border-[#1c212e] px-2.5 py-1 text-[10px] font-mono text-slate-500">
-            <span>NODO: LOCAL-01</span>
-            <span className="text-emerald-400">ACTIVO</span>
+            <span>APP MÓVIL: PWA</span>
+            <span className="text-blue-400">EN LÍNEA</span>
           </div>
         </div>
       </aside>
@@ -249,14 +280,27 @@ export const AppLayout: React.FC = () => {
       {/* Contenedor principal */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Barra superior de estado operativo */}
-        <header className="flex h-14 items-center justify-between border-b border-[#1e2330] bg-[#10131a] px-6">
-          <div className="min-w-0">
-            <h1 className="text-sm font-semibold text-white truncate">{currentSection.title}</h1>
-            <p className="text-[11px] text-slate-400 truncate hidden sm:block">{currentSection.subtitle}</p>
+        <header className="flex h-14 items-center justify-between border-b border-[#1e2330] bg-[#10131a] px-4 sm:px-6">
+          <div className="flex items-center min-w-0">
+            {/* Botón menú móvil */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden mr-3 p-1.5 rounded-lg border border-[#222836] bg-[#151922] text-slate-300 hover:text-white"
+              title="Abrir menú"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold text-white truncate">{currentSection.title}</h1>
+              <p className="text-[11px] text-slate-400 truncate hidden sm:block">{currentSection.subtitle}</p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="hidden md:flex items-center gap-2 rounded border border-[#222836] bg-[#151922] px-3 py-1 text-xs">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="hidden sm:flex items-center gap-2 rounded border border-[#222836] bg-[#151922] px-3 py-1 text-xs">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               <span className="text-[11px] font-medium text-slate-300">Motor IA:</span>
               <span className="text-[11px] font-mono text-slate-400">YOLOv8 + SFace</span>
@@ -266,7 +310,7 @@ export const AppLayout: React.FC = () => {
               <div className="text-xs font-semibold text-slate-200 tabular-nums">
                 {clock.toLocaleTimeString('es-BO', { hour12: false })}
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-slate-500 hidden sm:block">
                 {clock.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })}
               </div>
             </div>
@@ -274,10 +318,13 @@ export const AppLayout: React.FC = () => {
         </header>
 
         {/* Área de trabajo */}
-        <main className="flex-1 overflow-y-auto p-6 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-[1600px] w-full mx-auto">
           <Outlet />
         </main>
       </div>
+
+      {/* Asistente Inteligente flotante */}
+      <AIAssistantModal />
     </div>
   );
 };
