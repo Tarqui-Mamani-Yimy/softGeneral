@@ -1,1 +1,3 @@
-"""Users and role assignment (requires users.manage)."""
+from app.modules.users.router import router as users_router
+
+__all__ = ["users_router"]

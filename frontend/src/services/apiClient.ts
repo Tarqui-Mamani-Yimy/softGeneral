@@ -504,5 +504,48 @@ export async function fetchSportsSnapshotBlob(id: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function fetchUsers(params?: {
+  search?: string;
+  role?: string;
+  is_active?: boolean;
+}): Promise<import('../types/user').UserItem[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.role) searchParams.set('role', params.role);
+  if (params?.is_active !== undefined) searchParams.set('is_active', String(params.is_active));
+  const qs = searchParams.toString();
+  return apiClient<import('../types/user').UserItem[]>(`/users${qs ? `?${qs}` : ''}`);
+}
+
+export async function fetchRoles(): Promise<import('../types/user').RoleItem[]> {
+  return apiClient<import('../types/user').RoleItem[]>('/users/roles');
+}
+
+export async function createUser(
+  payload: import('../types/user').UserCreatePayload,
+): Promise<import('../types/user').UserItem> {
+  return apiClient<import('../types/user').UserItem>('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateUser(
+  id: string,
+  payload: import('../types/user').UserUpdatePayload,
+): Promise<import('../types/user').UserItem> {
+  return apiClient<import('../types/user').UserItem>(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  return apiClient<void>(`/users/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+
 
 

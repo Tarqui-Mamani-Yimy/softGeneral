@@ -11,6 +11,7 @@ import { BannedPersonsPage } from './pages/private/BannedPersonsPage';
 import { SportsEventsPage } from './pages/private/SportsEventsPage';
 import { VideosPage } from './pages/private/VideosPage';
 import { DemoPage } from './pages/private/DemoPage';
+import { UsersPage } from './pages/private/UsersPage';
 import { SharedResultPage } from './pages/public/SharedResultPage';
 
 export const App: React.FC = () => {
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
               <Route path="/sports" element={<SportsEventsPage />} />
               <Route path="/banned-persons" element={<BannedPersonsPage />} />
               <Route path="/videos" element={<VideosPage />} />
+              <Route path="/users" element={<UsersPage />} />
               <Route path="/demo" element={<DemoPage />} />
             </Route>
           </Route>
