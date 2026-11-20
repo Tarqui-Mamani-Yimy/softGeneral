@@ -109,7 +109,7 @@ Módulos pesados (pose/peleas, rostros, atributos) se ejecutan **en cascada**, s
 ## 6. Estructura de carpetas
 
 ```
-estadio-vision/
+softGeneral/
 ├── backend/
 │   ├── app/            # main.py, api/, core/, db/, schemas/, servicios/
 │   ├── vision/         # fuentes/, deteccion/, seguimiento/, reglas/, facial/, audio/, metricas/, alertas/
@@ -118,7 +118,7 @@ estadio-vision/
 │   └── Dockerfile
 ├── frontend/
 │   └── src/            # paginas/privado, paginas/publico, componentes/, servicios/, hooks/
-├── modelos/            # futbol.pt, armas.pt, fuego_humo.pt, peleas.pt (no subir a Git)
+├── modelos/            # futbol.pt, armas.pt, fuegoHumo.pt, peleas.pt (versionados en Git)
 ├── config/             # camaras.yaml, zonas.json, reglas.yaml
 ├── datos/              # videos_prueba/, salidas/, alertas/, eventos.db (no subir a Git)
 ├── entrenamiento/      # notebooks/, resultados/
@@ -133,9 +133,9 @@ estadio-vision/
 | Modelo | Base | Dataset | Estado | Resultados |
 |---|---|---|---|---|
 | **Fútbol** (ball, player, referee) | YOLO11s, 960 px, 40 épocas | Roboflow `footballai-xndiy/football-players-ball` v6 | **Entrenado** | mAP50 0.944, mAP50-95 0.708. Por clase (mAP50-95): ball 0.559, player 0.816, referee 0.749. Inferencia ~10 ms/imagen en T4 |
-| **Armas y objetos** | YOLO11s, 640 px, 25 épocas | Roboflow `workspace-1qko2/gun-detection-ghlzd` v1 (9,041 originales; la versión incluye aumentos) | **Entrenado** | Prueba corta de 5 épocas con el 25% de los datos: mAP50 0.567. **Resultados finales y clases por registrar** |
-| **Fuego y humo** | YOLO11s, 640 px, 25 épocas | Roboflow `mytest-blult/fire-smoke-detection-eozii` v1 | **Lanzado** | **Por verificar** |
-| **Peleas** | YOLO11s-cls, 224 px, 15 épocas | Kaggle `mohamedmustafa/real-life-violence-situations-dataset` (2000 videos, 1000 por clase, 10 fotogramas por video, separación 80/20 por video) | **Lanzado** | **Por verificar** |
+| **Armas** (gun) | YOLO11s, 640 px, 25 épocas | Roboflow `workspace-1qko2/gun-detection-ghlzd` v1 (9,041 originales; la versión incluye aumentos) | **Entrenado** | Prueba corta de 5 épocas con el 25% de los datos: mAP50 0.567. **Métricas finales por registrar** |
+| **Fuego y humo** (fire, smoke) | YOLO11s, 640 px, 25 épocas | Roboflow `mytest-blult/fire-smoke-detection-eozii` v1 | **Entrenado** | **Métricas por registrar** |
+| **Peleas** (fight, normal) | YOLO11s-cls, 224 px, 15 épocas | Kaggle `mohamedmustafa/real-life-violence-situations-dataset` (2000 videos, 1000 por clase, 10 fotogramas por video, separación 80/20 por video) | **Entrenado** | **Métricas por registrar** |
 
 **Modelos preentrenados (sin entrenar):** detector de personas (COCO), BoT-SORT/BoxMOT, OSNet (Re-ID), YOLO-Pose, InsightFace + FAISS, YAMNet.
 
@@ -147,14 +147,39 @@ estadio-vision/
 
 ---
 
-## 8. Fases y tareas
+## 8. Alcance mínimo (MVP para la demostración)
+
+Lo que **debe** funcionar en la demo. Todo lo demás es complementario y solo se aborda cuando el MVP esté completo.
+
+| Incluido en el MVP | Requisitos |
+|---|---|
+| Video cargado (Modo A) de principio a fin | RF2 |
+| Intrusos en cancha | RF5 |
+| Armas | RF3 |
+| Fuego y humo, con regla por zona para no alertar por bengalas en tribuna | RF4 |
+| Alertas con captura, clip y confirmar/falsa alarma | RF10 |
+| Web privada básica: subir video, ver avance y alertas | RF12 (parcial) |
+
+**Fuera del MVP:** tiempo real (RF1), peleas (RF6), Re-ID entre cámaras (RF7), métricas deportivas (RF8), reconocimiento facial (RF9), reportes (RF11) y vista pública.
+
+**Riesgos técnicos a prototipar temprano**
+
+- **Intrusos:** distinguir invasor de jugador, árbitro o personal con zonas y origen de la persona. Es la parte con más incertidumbre.
+- **Bengalas:** el modelo de fuego y humo va a detectarlas en tribuna; hace falta una regla por zona.
+- **Peleas:** el dataset es de calle y cámaras cercanas; un festejo de gol puede clasificarse como `fight`.
+
+---
+
+## 9. Fases y tareas
 
 ### Fase 0. Modelos *(casi terminada)*
 - [x] Modelo de fútbol entrenado
-- [x] Modelo de armas entrenado
-- [ ] Verificar y registrar resultados de armas, fuego/humo y peleas
-- [ ] Descargar los cuatro `best.pt` y renombrarlos (`armas.pt`, `fuego_humo.pt`, `peleas.pt`, `futbol.pt`)
-- [ ] Comprobar las clases de cada modelo (`model.names`)
+- [x] Modelos de armas, fuego/humo y peleas entrenados
+- [x] Descargar los cuatro `best.pt` y renombrarlos (`futbol.pt`, `armas.pt`, `fuegoHumo.pt`, `peleas.pt`)
+- [x] Comprobar las clases de cada modelo (`model.names`)
+- [ ] Registrar las métricas finales de armas, fuego/humo y peleas
+- [ ] Probar inferencia real de los cuatro modelos con `ultralytics`
+- [x] Distribuir los `.pt`: se versionan directamente en el repositorio (`modelos/`)
 
 ### Fase 1. Pipeline con video cargado (Modo A)
 - [ ] Interfaz `VideoSource` y `FileSource`
@@ -212,7 +237,7 @@ estadio-vision/
 
 ---
 
-## 9. Pruebas y criterios de aceptación
+## 10. Pruebas y criterios de aceptación
 
 - **Video cargado:** un video de partido se procesa de principio a fin y devuelve un video anotado y un reporte.
 - **Tiempo real:** una cámara simulada (RTSP) produce alertas en menos de 2 s, sin acumular retraso.
@@ -222,7 +247,7 @@ estadio-vision/
 
 ---
 
-## 10. Riesgos y mitigaciones
+## 11. Riesgos y mitigaciones
 
 | Riesgo | Mitigación |
 |---|---|
@@ -232,12 +257,12 @@ estadio-vision/
 | Poca potencia de cómputo | Modelos pequeños, ONNX/TensorRT, análisis cada N fotogramas |
 | Tiempo limitado | Priorizar: pipeline, intrusos, alertas, web básica; dejar opcionales para el final |
 | Cuota de GPU de Kaggle | Entrenamientos en segundo plano; Colab o GPU rentada como respaldo |
-| Poco espacio en disco | Conservar solo los cuatro `.pt`; videos y salidas fuera de Git |
+| Poco espacio en disco | Conservar solo los cuatro `.pt` (versionados en `modelos/`); videos y salidas fuera de Git |
 | Licencias | Ultralytics es AGPL-3.0 (licencia empresarial para uso comercial cerrado); los modelos preentrenados de InsightFace son de uso no comercial; revisar la licencia de cada dataset |
 
 ---
 
-## 11. Privacidad y consideraciones legales
+## 12. Privacidad y consideraciones legales
 
 - El reconocimiento facial usa **datos biométricos**, sensibles y regulados. Verificar la normativa de protección de datos del país antes de usarlo con personas reales.
 - Si se usa: lista de vetados controlada, motivo de inclusión documentado, solo embeddings cifrados, registro de cada coincidencia, plazo máximo de retención y proceso para retirar a una persona.
@@ -248,9 +273,9 @@ estadio-vision/
 
 ---
 
-## 12. Pendientes y preguntas abiertas
+## 13. Pendientes y preguntas abiertas
 
-- [ ] Confirmar el **hardware** donde correrá el sistema (¿GPU NVIDIA? ¿modelo?). El sistema operativo parece ser Linux, a confirmar.
+- [ ] **(Bloqueante)** Confirmar el **hardware** donde correrá el sistema (¿GPU NVIDIA? ¿modelo?). Sin este dato no se pueden validar los objetivos de FPS y latencia. El sistema operativo parece ser Linux, a confirmar.
 - [ ] Confirmar si las **cámaras son fijas o PTZ**: cambia cómo se definen las zonas.
 - [ ] Confirmar si las **métricas deportivas** (balón, posesión, jugadas) son obligatorias o complementarias.
 - [ ] Conseguir **videos de prueba** de partidos y, si es posible, del estadio real.
@@ -259,7 +284,7 @@ estadio-vision/
 
 ---
 
-## 13. Decisiones tomadas
+## 14. Decisiones tomadas
 
 - Un solo pipeline para video cargado y tiempo real.
 - Backend y frontend separados; análisis en un `worker` aparte de la API.

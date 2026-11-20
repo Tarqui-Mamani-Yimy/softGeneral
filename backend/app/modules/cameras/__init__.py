@@ -1,0 +1,1 @@
+"""Cameras and zones configuration."""

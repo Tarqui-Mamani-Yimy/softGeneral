@@ -1,0 +1,8 @@
+{
+  "scene": "demo",
+  "zones": [
+    {"name": "demo_stands_left", "zone_type": "stands", "polygon": [[0.00, 0.00], [0.25, 0.00], [0.25, 1.00], [0.00, 1.00]]},
+    {"name": "demo_field", "zone_type": "field", "polygon": [[0.25, 0.00], [0.75, 0.00], [0.75, 1.00], [0.25, 1.00]]},
+    {"name": "demo_stands_right", "zone_type": "stands", "polygon": [[0.75, 0.00], [1.00, 0.00], [1.00, 1.00], [0.75, 1.00]]}
+  ]
+}

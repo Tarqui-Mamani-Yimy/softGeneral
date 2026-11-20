@@ -1,0 +1,9 @@
+{
+  "scene": "example",
+  "zones": [
+    {"name": "field", "zone_type": "field", "polygon": [[0.20, 0.20], [0.80, 0.20], [0.80, 0.80], [0.20, 0.80]]},
+    {"name": "stands_left", "zone_type": "stands", "polygon": [[0.00, 0.00], [0.20, 0.00], [0.20, 1.00], [0.00, 1.00]]},
+    {"name": "stands_right", "zone_type": "stands", "polygon": [[0.80, 0.00], [1.00, 0.00], [1.00, 1.00], [0.80, 1.00]]},
+    {"name": "authorized_tunnel", "zone_type": "authorized", "polygon": [[0.42, 0.80], [0.58, 0.80], [0.58, 1.00], [0.42, 1.00]]}
+  ]
+}
