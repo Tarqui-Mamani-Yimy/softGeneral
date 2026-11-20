@@ -13,9 +13,9 @@ export function buildAlertsWsUrl(apiBaseUrl: string): string {
   return `${wsBase}/alerts/ws`;
 }
 
-/** URL of the MediaMTX built-in WebRTC player for a camera live path. */
+/** URL of the MediaMTX built-in WebRTC player; the trailing slash avoids a 301 redirect. */
 export function buildLivePlayerUrl(mediamtxBaseUrl: string, livePath: string): string {
-  return `${normalizeBaseUrl(mediamtxBaseUrl)}/${livePath.replace(/^\/+/, '')}`;
+  return `${normalizeBaseUrl(mediamtxBaseUrl)}/${livePath.replace(/^\/+|\/+$/g, '')}/`;
 }
 
 export interface ServerUrls {

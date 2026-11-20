@@ -37,9 +37,9 @@ describe('buildAlertsWsUrl', () => {
 });
 
 describe('buildLivePlayerUrl', () => {
-  it('joins the MediaMTX base URL and the camera live path', () => {
+  it('joins the MediaMTX base URL and the live path with a trailing slash (avoids a 301)', () => {
     expect(buildLivePlayerUrl('http://192.168.1.20:8889/', '/cam_north_01_annotated')).toBe(
-      'http://192.168.1.20:8889/cam_north_01_annotated',
+      'http://192.168.1.20:8889/cam_north_01_annotated/',
     );
   });
 });

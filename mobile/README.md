@@ -36,7 +36,7 @@ The default local setup only listens on `localhost`, which the phone cannot reac
 
 2. **MediaMTX (live video)**:
    - `docker-compose.yml` publishes its ports on `127.0.0.1`. Publish `8889/tcp` and `8889/udp` on `0.0.0.0` instead, for example with a local `docker-compose.override.yml`.
-   - Set `webrtcAdditionalHosts: [<pc-ip>]` in `mediamtx/mediamtx.yml` so WebRTC advertises an address the phone can use.
+   - Add your PC IP to the `webrtcAdditionalHosts` list in `mediamtx/mediamtx.yml` so WebRTC advertises an address the phone can use.
 3. **Firewall**: allow ports 8000 and 8889 (TCP and UDP) on the PC.
 
 ## Develop
