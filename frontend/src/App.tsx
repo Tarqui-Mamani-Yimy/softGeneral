@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/private/DashboardPage';
 import { AlertsPage } from './pages/private/AlertsPage';
 import { CamerasPage } from './pages/private/CamerasPage';
 import { BannedPersonsPage } from './pages/private/BannedPersonsPage';
+import { SportsEventsPage } from './pages/private/SportsEventsPage';
 import { VideosPage } from './pages/private/VideosPage';
 import { DemoPage } from './pages/private/DemoPage';
 import { SharedResultPage } from './pages/public/SharedResultPage';
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/cameras" element={<CamerasPage />} />
+              <Route path="/sports" element={<SportsEventsPage />} />
               <Route path="/banned-persons" element={<BannedPersonsPage />} />
               <Route path="/videos" element={<VideosPage />} />
               <Route path="/demo" element={<DemoPage />} />

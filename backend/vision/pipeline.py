@@ -30,6 +30,7 @@ def process_video(
     evidence=None,
     on_alert=None,
     banned_candidates: list[dict] | None = None,
+    on_sports_event=None,
 ) -> RunSummary:
     if stride < 1:
         raise ValueError("stride must be at least 1")
@@ -45,6 +46,9 @@ def process_video(
     last_detections: list[DetectionResult] = []
     last_classifications: list[ClassificationResult] = []
     last_face_matches = []
+    last_ball_time = None
+    last_formation_time = None
+    last_referee_time = None
     frames_read = frames_analyzed = 0
     started = perf_counter()
     if on_progress:
@@ -92,6 +96,59 @@ def process_video(
             if on_alert is not None:
                 for event in events:
                     on_alert(event, annotated)
+            if on_sports_event is not None:
+                balls = [d for d in last_detections if d.label == "ball"]
+                players = [d for d in last_detections if d.label == "player"]
+                referees = [d for d in last_detections if d.label == "referee"]
+                if balls and (last_ball_time is None or timestamp_s - last_ball_time >= 5.0):
+                    last_ball_time = timestamp_s
+                    best_ball = max(balls, key=lambda b: b.confidence)
+                    on_sports_event(
+                        {
+                            "event_type": "ball_in_play",
+                            "confidence": best_ball.confidence,
+                            "timestamp_s": timestamp_s,
+                            "frame_index": frames_read,
+                            "details": {
+                                "ball_box": list(best_ball.box),
+                                "active_players": len(players),
+                                "referees": len(referees),
+                            },
+                        },
+                        annotated,
+                    )
+                if len(players) >= 3 and (last_formation_time is None or timestamp_s - last_formation_time >= 15.0):
+                    last_formation_time = timestamp_s
+                    avg_conf = sum(p.confidence for p in players) / len(players)
+                    on_sports_event(
+                        {
+                            "event_type": "match_formation",
+                            "confidence": avg_conf,
+                            "timestamp_s": timestamp_s,
+                            "frame_index": frames_read,
+                            "details": {
+                                "players_count": len(players),
+                                "referees": len(referees),
+                            },
+                        },
+                        annotated,
+                    )
+                if referees and (last_referee_time is None or timestamp_s - last_referee_time >= 15.0):
+                    last_referee_time = timestamp_s
+                    best_ref = max(referees, key=lambda r: r.confidence)
+                    on_sports_event(
+                        {
+                            "event_type": "referee_active",
+                            "confidence": best_ref.confidence,
+                            "timestamp_s": timestamp_s,
+                            "frame_index": frames_read,
+                            "details": {
+                                "referee_box": list(best_ref.box),
+                                "players_count": len(players),
+                            },
+                        },
+                        annotated,
+                    )
         elif evidence is not None:
             evidence.record_frame(annotated, timestamp_s)
         writer.write(annotated)

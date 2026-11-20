@@ -5,7 +5,7 @@ import { useAuth } from '../hooks';
 interface NavItem {
   name: string;
   to: string;
-  group: 'monitoreo' | 'control' | 'sistema';
+  group: 'monitoreo' | 'control' | 'sistema' | 'deportiva';
   icon: React.ReactNode;
 }
 
@@ -21,6 +21,10 @@ const SECTION_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/cameras': {
     title: 'Matriz de Cámaras de Vigilancia',
     subtitle: 'Administración de canales RTSP / WebRTC y visualización en tiempo real',
+  },
+  '/sports': {
+    title: 'Eventos y Analítica Deportiva',
+    subtitle: 'Detección y seguimiento de jugadores, árbitros y balón de fútbol mediante IA',
   },
   '/banned-persons': {
     title: 'Registro Biométrico de Restricción de Acceso',
@@ -76,6 +80,16 @@ export const AppLayout: React.FC = () => {
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+      ),
+    },
+    {
+      name: 'Eventos Deportivos',
+      to: '/sports',
+      group: 'deportiva',
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.504-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.004 0H9.496m5.004 0a5.25 5.25 0 00-5.004 0m5.004 0A6.75 6.75 0 0118 10.5V6a2.25 2.25 0 00-2.25-2.25H8.25A2.25 2.25 0 006 6v4.5c0 1.996.866 3.805 2.25 5.062" />
         </svg>
       ),
     },
@@ -175,6 +189,7 @@ export const AppLayout: React.FC = () => {
           {/* Menú de navegación agrupado */}
           <nav aria-label="Navegación principal" className="p-3 space-y-5">
             {renderGroup('monitoreo', 'Monitoreo en Vivo')}
+            {renderGroup('deportiva', 'Analítica Deportiva')}
             {renderGroup('control', 'Control e Inteligencia')}
             {renderGroup('sistema', 'Diagnóstico')}
           </nav>

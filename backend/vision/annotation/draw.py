@@ -19,10 +19,37 @@ def draw_detections(
 ) -> np.ndarray:
     for detection in detections:
         x1, y1, x2, y2 = (int(value) for value in detection.box)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
         suffix = f" #{detection.track_id}" if detection.track_id is not None else ""
-        label = f"{detection.label}{suffix} {detection.confidence:.2f}"
-        cv2.putText(frame, label, (x1, max(y1 - 5, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
+        
+        if detection.label == "player":
+            color = (235, 180, 52)  # Cyan / Sky blue
+            text = f"JUGADOR{suffix} {int(detection.confidence * 100)}%"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        elif detection.label == "referee":
+            color = (0, 215, 255)  # Yellow / Amber
+            text = f"ARBITRO {int(detection.confidence * 100)}%"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        elif detection.label == "ball":
+            color = (50, 255, 50)  # Bright neon green
+            text = f"BALON {int(detection.confidence * 100)}%"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            r = max(6, max(x2 - x1, y2 - y1) // 2)
+            cv2.circle(frame, (cx, cy), r, color, 2)
+        elif detection.label == "gun":
+            color = (0, 0, 255)
+            text = f"ARMA {int(detection.confidence * 100)}%"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        elif detection.label in {"fire", "smoke"}:
+            color = (0, 140, 255)
+            text = f"{detection.label.upper()} {int(detection.confidence * 100)}%"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        else:
+            color = (0, 255, 0)
+            text = f"{detection.label}{suffix} {detection.confidence:.2f}"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+        cv2.putText(frame, text, (x1, max(y1 - 5, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
 
     if face_matches:
         for match in face_matches:

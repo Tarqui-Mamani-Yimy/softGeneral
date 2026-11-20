@@ -466,4 +466,43 @@ export async function fetchBannedPersonPhotoBlob(id: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function fetchSportsEvents(params?: {
+  video_job_id?: string;
+  camera_id?: string;
+  event_type?: string;
+  limit?: number;
+}): Promise<import('../types/sports').SportsEvent[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.video_job_id) searchParams.set('video_job_id', params.video_job_id);
+  if (params?.camera_id) searchParams.set('camera_id', params.camera_id);
+  if (params?.event_type) searchParams.set('event_type', params.event_type);
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  const qs = searchParams.toString();
+  return apiClient<import('../types/sports').SportsEvent[]>(`/sports/events${qs ? `?${qs}` : ''}`);
+}
+
+export async function fetchSportsSummary(video_job_id?: string): Promise<import('../types/sports').SportsSummary> {
+  const qs = video_job_id ? `?video_job_id=${encodeURIComponent(video_job_id)}` : '';
+  return apiClient<import('../types/sports').SportsSummary>(`/sports/summary${qs}`);
+}
+
+export async function fetchSportsSnapshotBlob(id: string): Promise<Blob> {
+  const url = `${API_URL}/sports/events/${id}/snapshot`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    if (response.status === 401 && onUnauthorizedCallback) {
+      setAuthToken(null);
+      onUnauthorizedCallback();
+    }
+    throw new ApiError(response.status, response.statusText);
+  }
+  return response.blob();
+}
+
+
 

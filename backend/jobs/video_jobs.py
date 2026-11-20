@@ -36,6 +36,7 @@ class VideoJobRunner:
         analyzer_factory=None,
         rules_factory=None,
         evidence_factory=None,
+        sports_repository=None,
     ):
         self.session_factory = session_factory
         self.settings = settings
@@ -45,6 +46,13 @@ class VideoJobRunner:
 
             alert_repository = AlertRepository()
         self.alert_repository = alert_repository
+        if sports_repository is None:
+            try:
+                from app.modules.sports.repository import SportsEventRepository
+                sports_repository = SportsEventRepository()
+            except Exception:
+                sports_repository = None
+        self.sports_repository = sports_repository
         if pipeline is None:
             from vision.pipeline import process_video
 
@@ -108,6 +116,8 @@ class VideoJobRunner:
                         "evidence": evidence,
                         "on_alert": lambda event, frame: self._record_alert(job, event, frame, evidence),
                     })
+                if self.sports_repository is not None and ("on_sports_event" in parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values())):
+                    pipeline_kwargs["on_sports_event"] = lambda event_data, frame: self._record_sports_event(job, event_data, frame)
                 self.pipeline(source, writer, self.analyzer_factory(), **pipeline_kwargs)
             self._update(lambda session: self.repository.complete(session, job.id, str(output_path.resolve())))
         except StopRequested:
@@ -149,6 +159,34 @@ class VideoJobRunner:
             snapshot_path=snapshot_path,
             clip_path=clip_path,
             details=details,
+        ))
+
+    def _record_sports_event(self, job, event_data: dict, frame) -> None:
+        from uuid import uuid4
+        import cv2
+
+        event_id = uuid4()
+        started_at = getattr(job, "started_at", None) or datetime.now(UTC)
+        occurred_at = started_at + timedelta(seconds=event_data["timestamp_s"])
+
+        sports_dir = Path(self.settings.storage_dir) / "sports"
+        sports_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_file = sports_dir / f"{event_id}.jpg"
+        relative_snapshot = f"sports/{event_id}.jpg"
+        try:
+            cv2.imwrite(str(snapshot_file), frame)
+        except Exception:
+            relative_snapshot = None
+
+        self._update(lambda session: self.sports_repository.create(
+            session,
+            id=event_id,
+            event_type=event_data["event_type"],
+            video_job_id=job.id,
+            occurred_at=occurred_at,
+            confidence=event_data["confidence"],
+            snapshot_path=relative_snapshot,
+            details=event_data.get("details", {}),
         ))
 
     def _progress_callback(self, job_id, stop_event: Event):
