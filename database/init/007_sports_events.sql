@@ -14,3 +14,4 @@ CREATE TABLE IF NOT EXISTS sports_events (
 
 CREATE INDEX IF NOT EXISTS idx_sports_events_video_job ON sports_events (video_job_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_sports_events_camera ON sports_events (camera_id, occurred_at);
+

@@ -138,3 +138,4 @@ class SportsEventRepository:
             details=details or {},
             created_at=row["created_at"],
         )
+

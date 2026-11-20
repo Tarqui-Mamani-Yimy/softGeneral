@@ -23,3 +23,4 @@ class SportsSummaryResponse(BaseModel):
     total_formation_events: int
     total_referee_events: int
     events: list[SportsEventResponse]
+

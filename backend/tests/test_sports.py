@@ -43,3 +43,4 @@ def test_sports_repository_create_and_list(tmp_path):
     with session_factory() as session:
         session.execute(text("DELETE FROM sports_events WHERE id = :id"), {"id": event_id})
         session.commit()
+

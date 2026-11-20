@@ -27,3 +27,4 @@ export interface SportsSummary {
   total_referee_events: number;
   events: SportsEvent[];
 }
+
