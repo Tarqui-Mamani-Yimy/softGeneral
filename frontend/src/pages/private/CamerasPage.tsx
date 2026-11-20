@@ -9,7 +9,9 @@ import {
 } from '../../services/apiClient';
 import type { Camera, CameraSourceType } from '../../types/camera';
 
-const MEDIAMTX_URL = (import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? 'http://localhost:8889').replace(/\/+$/, '');
+const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const defaultMtxUrl = isSecure ? '/mediamtx' : 'http://localhost:8889';
+const MEDIAMTX_URL = (import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? defaultMtxUrl).replace(/\/+$/, '');
 const CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
 
 export const CamerasPage: React.FC = () => {

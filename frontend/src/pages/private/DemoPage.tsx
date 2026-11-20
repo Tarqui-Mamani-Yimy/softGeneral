@@ -18,8 +18,10 @@ import {
 import type { DemoSession, DemoStatus } from '../../types/demo';
 import type { Alert } from '../../types/alert';
 
+const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const defaultMtxUrl = isSecure ? '/mediamtx' : 'http://localhost:8889';
 const MEDIAMTX_URL = (
-  import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? 'http://localhost:8889'
+  import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? defaultMtxUrl
 ).replace(/\/+$/, '');
 
 const STATUS_LABELS: Record<DemoStatus, string> = {

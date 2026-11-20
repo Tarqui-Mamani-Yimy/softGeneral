@@ -20,11 +20,18 @@ interface UseAlertStreamResult {
 }
 
 export function getAlertsWsUrl(): string {
-  const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
-  const base = apiUrl.replace(/\/+$/, '');
-  const wsProtocol = base.startsWith('https://') ? 'wss://' : 'ws://';
-  const cleanUrl = base.replace(/^https?:\/\//, '');
-  return `${wsProtocol}${cleanUrl}/alerts/ws`;
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl.startsWith('http')) {
+    const wsProtocol = envUrl.startsWith('https://') ? 'wss://' : 'ws://';
+    const cleanUrl = envUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    return `${wsProtocol}${cleanUrl}/alerts/ws`;
+  }
+  const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const protocol = isSecure ? 'wss:' : 'ws:';
+  const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8000';
+  const rawApi = (envUrl ?? '/api/v1').replace(/\/+$/, '');
+  const basePath = rawApi.startsWith('/') ? rawApi : `/${rawApi}`;
+  return `${protocol}//${host}${basePath}/alerts/ws`;
 }
 
 export function useAlertStream(options: UseAlertStreamOptions = {}): UseAlertStreamResult {
@@ -93,9 +100,16 @@ export function useAlertStream(options: UseAlertStreamOptions = {}): UseAlertStr
       wsRef.current = null;
     }
 
-    const wsUrl = getAlertsWsUrl();
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    let ws: WebSocket;
+    try {
+      const wsUrl = getAlertsWsUrl();
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+    } catch (err) {
+      console.error('[AlertStream] Error creating WebSocket:', err);
+      setStatus('disconnected');
+      return;
+    }
 
     ws.onopen = () => {
       if (isUnmountedRef.current) return;

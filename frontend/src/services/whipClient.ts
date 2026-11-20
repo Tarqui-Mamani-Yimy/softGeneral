@@ -7,10 +7,22 @@ export interface WhipConnection {
 
 export function resolveWhipUrl(whipUrl: string): string {
   if (whipUrl.startsWith('http://') || whipUrl.startsWith('https://')) {
+    // If on HTTPS, rewrite insecure HTTP to avoid Mixed Content
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && whipUrl.startsWith('http://')) {
+      try {
+        const parsed = new URL(whipUrl);
+        // Proxy through Nginx /mediamtx/ endpoint
+        return `${window.location.protocol}//${window.location.host}/mediamtx${parsed.pathname}`;
+      } catch {
+        // keep whipUrl
+      }
+    }
     return whipUrl;
   }
+  const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const defaultMtxUrl = isSecure ? '/mediamtx' : 'http://localhost:8889';
   const baseUrl = (
-    import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? 'http://localhost:8889'
+    import.meta.env.VITE_MEDIAMTX_WEBRTC_URL ?? defaultMtxUrl
   ).replace(/\/+$/, '');
   const cleanPath = whipUrl.startsWith('/') ? whipUrl : `/${whipUrl}`;
   return `${baseUrl}${cleanPath}`;

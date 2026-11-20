@@ -4,7 +4,10 @@ import type { Camera, CameraCreatePayload, CameraUpdatePayload } from '../types/
 import type { DemoSession } from '../types/demo';
 import type { VideoJob } from '../types/video';
 
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+const rawApiUrl = (import.meta.env.VITE_API_URL ?? '/api/v1').replace(/\/+$/, '');
+export const API_URL = rawApiUrl.startsWith('http')
+  ? rawApiUrl
+  : (rawApiUrl.startsWith('/') ? rawApiUrl : `/${rawApiUrl}`);
 const TOKEN_KEY = 'softgeneral_auth_token';
 
 export class ApiError extends Error {
