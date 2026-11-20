@@ -201,7 +201,7 @@ export const CamerasPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {activeCameras.map((camera) => {
-            const playerUrl = `${MEDIAMTX_URL}/${camera.live_path}`;
+            const playerUrl = `${MEDIAMTX_URL}/${camera.live_path}/`;
             return (
               <div
                 key={camera.id}

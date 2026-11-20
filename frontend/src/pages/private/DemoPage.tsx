@@ -374,7 +374,7 @@ export const DemoPage: React.FC = () => {
     );
   }
 
-  const livePlayerUrl = session ? `${MEDIAMTX_URL}/${session.live_path}` : '';
+  const livePlayerUrl = session ? `${MEDIAMTX_URL}/${session.live_path}/` : '';
 
   const getStepState = (targetStep: DemoStatus): 'pending' | 'active' | 'completed' => {
     const order: DemoStatus[] = ['requesting_camera', 'publishing', 'waiting_for_analysis', 'live'];
