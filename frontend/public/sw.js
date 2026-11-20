@@ -35,7 +35,9 @@ self.addEventListener('push', (event) => {
     badge: data.badge || '/icon.svg',
     tag: data.tag || 'siv-alert',
     data: { url: data.url || '/alerts' },
-    vibrate: [200, 100, 200],
+    vibrate: [500, 150, 500, 150, 600],
+    silent: false,
+    requireInteraction: true,
     actions: [
       { action: 'view', title: 'Ver Alerta' },
       { action: 'close', title: 'Cerrar' }
@@ -65,3 +67,4 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+

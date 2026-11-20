@@ -490,3 +490,4 @@ export const AIAssistantModal: React.FC = () => {
     </>
   );
 };
+
