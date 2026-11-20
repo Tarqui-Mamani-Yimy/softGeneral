@@ -39,6 +39,7 @@ RTSP camera ────┴─► live_worker.py ─► rules ─► alerts ─�
 |---|---|
 | `backend/` | FastAPI API, `worker.py` (Mode A), `live_worker.py` (Mode B), `vision/` pipeline, tests |
 | `frontend/` | React + Vite + TypeScript + Tailwind web app |
+| `mobile/` | Expo (React Native) app for guards: alerts, review, live cameras (see `mobile/README.md`) |
 | `database/` | PostgreSQL schema and seed (`init/*.sql`), schema smoke test |
 | `modelos/` | Trained YOLO11 models: `futbol.pt`, `armas.pt`, `fuegoHumo.pt`, `peleas.pt` |
 | `config/` | Rule thresholds (`rules.yaml`) and zone polygons (`zones/*.json`) |
