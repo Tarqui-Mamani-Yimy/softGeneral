@@ -1,4 +1,4 @@
-from vision.detection.types import DetectionResult
+from vision.detection.types import ClassificationResult, DetectionResult
 from vision.rules.config import RuleConfig
 from vision.rules.engine import RulesEngine
 from vision.rules.zones import Zone, ZoneMap
@@ -83,3 +83,24 @@ def test_overlapping_zones_use_restricted_then_field_priority():
     ])
 
     assert overlap.zone_of((0.25, 0.25)).name == "restricted_corner"
+
+
+def test_fight_requires_k_of_n_and_triggers_alert():
+    rules = engine(fight_k=3, fight_n=5, fight_confidence=0.6)
+    events = []
+    fight = [ClassificationResult("fight", 0.85)]
+    normal = [ClassificationResult("normal", 0.9)]
+    for frame in range(1, 6):
+        events.extend(
+            rules.update(
+                frame,
+                float(frame),
+                FRAME,
+                [person(1, (20, 20, 40, 80))],
+                [],
+                classifications=fight if frame <= 3 else normal,
+            )
+        )
+    assert len(events) == 1
+    assert events[0].alert_type == "fight"
+    assert events[0].confidence == 0.85

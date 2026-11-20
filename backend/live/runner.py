@@ -113,8 +113,13 @@ class _LatestAnalyzer:
                 self.latest = None
             frame, timestamp_s, capture_timestamp = item
             detections = []
+            classifications = []
             for analyzer in self.analyzers:
-                detections.extend(analyzer.analyze(frame))
+                for item in analyzer.analyze(frame):
+                    if hasattr(item, "box"):
+                        detections.append(item)
+                    else:
+                        classifications.append(item)
 
             face_matches = []
             self._load_candidates()
@@ -124,7 +129,8 @@ class _LatestAnalyzer:
                 except Exception as exc:
                     logger.debug("Face match error: %s", exc)
 
-            annotated = draw_detections(frame.copy(), detections, face_matches=face_matches)
+            fight_conf = next((c.confidence for c in classifications if c.label == "fight" and c.confidence >= 0.5), None)
+            annotated = draw_detections(frame.copy(), detections, face_matches=face_matches, fight_alert=fight_conf)
             events = self.rules.update(
                 self.analyzed,
                 timestamp_s,
@@ -132,6 +138,7 @@ class _LatestAnalyzer:
                 [d for d in detections if d.label == "person"],
                 [d for d in detections if d.label != "person"],
                 face_matches=face_matches,
+                classifications=classifications,
             )
             with self.condition:
                 self.results = detections

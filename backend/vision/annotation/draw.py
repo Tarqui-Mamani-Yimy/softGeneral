@@ -15,6 +15,7 @@ def draw_detections(
     frame: np.ndarray,
     detections: list[DetectionResult],
     face_matches: list[FaceMatch] | None = None,
+    fight_alert: float | None = None,
 ) -> np.ndarray:
     for detection in detections:
         x1, y1, x2, y2 = (int(value) for value in detection.box)
@@ -44,5 +45,23 @@ def draw_detections(
                 1,
                 cv2.LINE_AA,
             )
+
+    if fight_alert is not None and fight_alert >= 0.5:
+        h, w = frame.shape[:2]
+        fight_label = f"ALERTA: ALTERCADO / PELEA DETECTADA ({int(fight_alert * 100)}%)"
+        (bw, bh), _ = cv2.getTextSize(fight_label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        top_y2 = max(bh + 14, 34)
+        cv2.rectangle(frame, (0, 0), (w, top_y2), (0, 0, 180), -1)
+        text_x = max(10, (w - bw) // 2)
+        cv2.putText(
+            frame,
+            fight_label,
+            (text_x, top_y2 - 9),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
     return frame

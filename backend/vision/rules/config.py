@@ -20,6 +20,9 @@ class RuleConfig:
     weapon_k: int = 3
     weapon_n: int = 5
     weapon_confidence: float = 0.6
+    fight_k: int = 4
+    fight_n: int = 6
+    fight_confidence: float = 0.6
     cooldown_seconds: float = 30.0
     forget_after_seconds: float = 30.0
 
@@ -45,11 +48,22 @@ def load_rules_config(rules_path: str | Path, zones_path: str | Path) -> RulesCo
         "weapon_k": raw_rules.get("weapon", {}).get("k", 3),
         "weapon_n": raw_rules.get("weapon", {}).get("n", 5),
         "weapon_confidence": raw_rules.get("weapon", {}).get("confidence", 0.6),
+        "fight_k": raw_rules.get("fight", {}).get("k", 4),
+        "fight_n": raw_rules.get("fight", {}).get("n", 6),
+        "fight_confidence": raw_rules.get("fight", {}).get("confidence", 0.6),
         "cooldown_seconds": raw_rules.get("cooldown_seconds", 30),
         "forget_after_seconds": raw_rules.get("forget_after_seconds", 30),
     }
     config = RuleConfig(**values)
-    if config.intrusion_min_frames < 1 or config.fire_smoke_k < 1 or config.fire_smoke_n < config.fire_smoke_k or config.weapon_k < 1 or config.weapon_n < config.weapon_k:
+    if (
+        config.intrusion_min_frames < 1
+        or config.fire_smoke_k < 1
+        or config.fire_smoke_n < config.fire_smoke_k
+        or config.weapon_k < 1
+        or config.weapon_n < config.weapon_k
+        or config.fight_k < 1
+        or config.fight_n < config.fight_k
+    ):
         raise ValueError("Rule window values must be positive and k must not exceed n")
     zones = raw_zones.get("zones", raw_zones) if isinstance(raw_zones, dict) else raw_zones
     parsed = []

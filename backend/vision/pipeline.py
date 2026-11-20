@@ -43,6 +43,7 @@ def process_video(
             pass
     counts: Counter[str] = Counter()
     last_detections: list[DetectionResult] = []
+    last_classifications: list[ClassificationResult] = []
     last_face_matches = []
     frames_read = frames_analyzed = 0
     started = perf_counter()
@@ -52,6 +53,7 @@ def process_video(
         if frames_read % stride == 0:
             frames_analyzed += 1
             current = []
+            current_cls = []
             for analyzer in analyzers:
                 results = analyzer.analyze(frame)
                 for result in results:
@@ -59,8 +61,10 @@ def process_video(
                         current.append(result)
                         counts[result.label] += 1
                     elif isinstance(result, ClassificationResult):
+                        current_cls.append(result)
                         counts[result.label] += 1
             last_detections = current
+            last_classifications = current_cls
             if face_engine and banned_candidates:
                 try:
                     last_face_matches = face_engine.find_matches(frame, banned_candidates)
@@ -69,7 +73,8 @@ def process_video(
                 except Exception:
                     last_face_matches = []
         timestamp_s = frames_read / source.fps if source.fps else float(frames_read)
-        annotated = draw_detections(frame.copy(), last_detections, face_matches=last_face_matches)
+        fight_conf = next((c.confidence for c in last_classifications if c.label == "fight" and c.confidence >= 0.5), None)
+        annotated = draw_detections(frame.copy(), last_detections, face_matches=last_face_matches, fight_alert=fight_conf)
         if rules_engine is not None and frames_read % stride == 0:
             person_tracks = [result for result in last_detections if result.label == "person"]
             detections = [result for result in last_detections if result.label != "person"]
@@ -80,6 +85,7 @@ def process_video(
                 person_tracks,
                 detections,
                 face_matches=last_face_matches,
+                classifications=last_classifications,
             )
             if evidence is not None:
                 evidence.record_frame(annotated, timestamp_s)

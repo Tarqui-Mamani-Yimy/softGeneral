@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 500
     worker_poll_seconds: float = 2.0
     worker_stride: int = 2
-    worker_models: str = "person,armas,fuegoHumo"
+    worker_models: str = "person,armas,fuegoHumo,peleas"
     worker_rules_file: str = "../config/rules.yaml"
     worker_zones_file: str = "../config/zones/example.json"
     demo_zones_file: str = "../config/zones/demo.json"

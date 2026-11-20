@@ -207,6 +207,9 @@ class VideoJobRunner:
                 weapon_k=raw.get("weapon", {}).get("k", rule_config.weapon_k),
                 weapon_n=raw.get("weapon", {}).get("n", rule_config.weapon_n),
                 weapon_confidence=raw.get("weapon", {}).get("confidence", rule_config.weapon_confidence),
+                fight_k=raw.get("fight", {}).get("k", rule_config.fight_k),
+                fight_n=raw.get("fight", {}).get("n", rule_config.fight_n),
+                fight_confidence=raw.get("fight", {}).get("confidence", rule_config.fight_confidence),
                 cooldown_seconds=raw.get("cooldown_seconds", rule_config.cooldown_seconds),
                 forget_after_seconds=raw.get("forget_after_seconds", rule_config.forget_after_seconds),
             )

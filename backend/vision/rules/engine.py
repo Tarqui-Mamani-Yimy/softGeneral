@@ -48,9 +48,10 @@ class RulesEngine:
         self.tracks: dict[int, TrackState] = {}
         self.fire_history = deque(maxlen=self.config.fire_smoke_n)
         self.weapon_history = deque(maxlen=self.config.weapon_n)
+        self.fight_history = deque(maxlen=self.config.fight_n)
         self.cooldowns: dict[tuple[str, object], float] = {}
 
-    def update(self, frame_index, timestamp_s, frame_size, person_tracks, detections, face_matches=None) -> list[AlertEvent]:
+    def update(self, frame_index, timestamp_s, frame_size, person_tracks, detections, face_matches=None, classifications=None) -> list[AlertEvent]:
         events = []
         if face_matches:
             for match in face_matches:
@@ -119,6 +120,38 @@ class RulesEngine:
             key = ("weapon", track_id if track_id is not None else (zone.name if zone else None))
             if self._available_key(key, timestamp_s):
                 events.append(AlertEvent("weapon", frame_index, timestamp_s, best.confidence, best.box, track_id, zone.name if zone else None, {}))
+
+        if classifications:
+            fights = [c for c in classifications if c.label == "fight" and c.confidence >= self.config.fight_confidence]
+            self.fight_history.append(fights)
+            if sum(bool(frame) for frame in self.fight_history) >= self.config.fight_k and fights:
+                best = max(fights, key=lambda item: item.confidence)
+                if person_tracks:
+                    min_x = max(0.0, min(p.box[0] for p in person_tracks))
+                    min_y = max(0.0, min(p.box[1] for p in person_tracks))
+                    max_x = min(float(frame_size[0]), max(p.box[2] for p in person_tracks))
+                    max_y = min(float(frame_size[1]), max(p.box[3] for p in person_tracks))
+                    bbox = (min_x, min_y, max_x, max_y)
+                else:
+                    bbox = (0.0, 0.0, float(frame_size[0]), float(frame_size[1]))
+                zone = self.zones.zone_of(_center(bbox, frame_size))
+                key = ("fight", zone.name if zone else None)
+                if self._available_key(key, timestamp_s):
+                    events.append(
+                        AlertEvent(
+                            "fight",
+                            frame_index,
+                            timestamp_s,
+                            best.confidence,
+                            bbox,
+                            None,
+                            zone.name if zone else None,
+                            {"classification": "fight", "confidence": best.confidence},
+                        )
+                    )
+        else:
+            self.fight_history.append([])
+
         return events
 
     def _available_key(self, key, timestamp_s):
